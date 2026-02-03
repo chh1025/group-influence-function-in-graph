@@ -1,0 +1,10 @@
+*.pyc
+*.pt
+*.allx
+*.ally
+*.x
+*.y
+*.tx
+*.ty
+*.graph
+*.index
