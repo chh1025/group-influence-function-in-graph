@@ -8,3 +8,4 @@
 *.ty
 *.graph
 *.index
+.nogic
