@@ -80,7 +80,7 @@ class GraphInfluenceModule:
 
         return self.validation_splits
         
-    def get_retraining_influence(self, targets, influence_type, params):
+    def get_parameter_shifting_influence(self, targets, influence_type, params):
         """
         target: the target to estimate influence
         influence_type: the type of graph element. Choices: {'edge_removal', 'edge_insertion'}
@@ -120,7 +120,7 @@ class GraphInfluenceModule:
 
             return k_fold_edge_influence, train_influenced_nodes.numel()
     
-    def get_perturbing_influence(self, targets, influence_type):
+    def get_message_passing_influence(self, targets, influence_type):
         """
         target: the target to estimate influence
         influence_type: the type of graph element. Choices: {'edge_removal', 'edge_insertion'}
@@ -132,11 +132,11 @@ class GraphInfluenceModule:
                 removed_edge_idx.append(r_edge_idx)
             removed_edge_idx = torch.cat(removed_edge_idx, dim=-1)
 
-            k_fold_perturb_effect = []
+            k_fold_message_passing_effect = []
             for i in range(self.num_folds):
                 eval_grad = self.weight_grad[i][removed_edge_idx]
-                perturb_effect = eval_grad.sum() * -1
-                k_fold_perturb_effect.append(perturb_effect.item())
+                message_passing_effect = eval_grad.sum() * -1
+                k_fold_message_passing_effect.append(message_passing_effect.item())
         elif influence_type == 'edge_insertion':
             added_edge_idx = []
             for target in targets:
@@ -144,13 +144,13 @@ class GraphInfluenceModule:
                 added_edge_idx.append(a_edge_idx)
             added_edge_idx = torch.cat(added_edge_idx)
             
-            k_fold_perturb_effect = []
+            k_fold_message_passing_effect = []
             for i in range(self.num_folds):
                 eval_grad = self.weight_grad_with_dummy_edges[i][added_edge_idx]
-                perturb_effect = eval_grad.sum()
-                k_fold_perturb_effect.append(perturb_effect.item())
+                message_passing_effect = eval_grad.sum()
+                k_fold_message_passing_effect.append(message_passing_effect.item())
 
-        return k_fold_perturb_effect
+        return k_fold_message_passing_effect
 
     def calculate_influence(self, candidates, influence_type):
         """
@@ -170,28 +170,28 @@ class GraphInfluenceModule:
         params = [p for p in self.model.parameters() if p.requires_grad]
 
         total_inf_list = []
-        retrain_inf_list = []
-        perturb_inf_list = []
+        parameter_shift_inf_list = []
+        message_passing_inf_list = []
         total_num_influenced_nodes = 0
 
         for target in tqdm(candidates):
-            retrain_inf, num_influenced_nodes = self.get_retraining_influence(target, influence_type, params)
-            retrain_inf = torch.tensor(retrain_inf)
+            parameter_shift_inf, num_influenced_nodes = self.get_parameter_shifting_influence(target, influence_type, params)
+            parameter_shift_inf = torch.tensor(parameter_shift_inf)
             total_num_influenced_nodes += num_influenced_nodes
-            retrain_inf_list.append(retrain_inf)
+            parameter_shift_inf_list.append(parameter_shift_inf)
 
-            perturb_inf = self.get_perturbing_influence(target, influence_type)
-            perturb_inf = torch.tensor(perturb_inf)
-            perturb_inf_list.append(perturb_inf)
+            message_passing_inf = self.get_message_passing_influence(target, influence_type)
+            message_passing_inf = torch.tensor(message_passing_inf)
+            message_passing_inf_list.append(message_passing_inf)
 
-            total_inf = retrain_inf + perturb_inf
+            total_inf = parameter_shift_inf + message_passing_inf
             total_inf_list.append(total_inf)
 
-        retrain_inf_list = torch.stack(retrain_inf_list)
-        perturb_inf_list = torch.stack(perturb_inf_list)
+        parameter_shift_inf_list = torch.stack(parameter_shift_inf_list)
+        message_passing_inf_list = torch.stack(message_passing_inf_list)
         total_inf_list = torch.stack(total_inf_list)
         
-        return total_inf_list, retrain_inf_list, perturb_inf_list, self.module.scale, self.inv_hvp_norm, num_influenced_nodes/candidates.shape[0]
+        return total_inf_list, parameter_shift_inf_list, message_passing_inf_list, self.module.scale, self.inv_hvp_norm, num_influenced_nodes/candidates.shape[0]
     
     def _load_exact_k_hop_neighbors(self):
         if self.eval_metric == 'feature_ablation':
@@ -475,7 +475,7 @@ def calculate_pbrf(model, graph, candidate_edges, args, seed, model_dir, metric_
                 torch.save(new_model.state_dict(), edge_perturb_model_path)
 
             new_model.eval()
-            perturbed_result     = metric_fn(new_model, perturbed_graph)
+            perturbed_result = metric_fn(new_model, perturbed_graph)
             perturbed_result_nip = metric_fn(new_model, graph)
             perturbed_result_nrt = metric_fn(model, perturbed_graph)
 
@@ -604,9 +604,9 @@ if __name__ == '__main__':
         torch.save({k: v.clone().detach() for k, v in model.state_dict().items()}, vanilla_path)
 
     save_name = f'influence_vs_pbrf'
-    save_name_nip = f'retraining_effect'
-    save_name_nrt = f'perturbing_effect'
-    save_name_rtpt = f'retraining_vs_perturbing'
+    save_name_nip = f'parameter_shifting_effect'
+    save_name_nrt = f'message_passing_effect'
+    save_name_rtpt = f'parameter_shifting_vs_message_passing'
 
     set_seed(seed)
     if args.eval_metric == "feature_ablation":
@@ -638,37 +638,37 @@ if __name__ == '__main__':
     start_time = time.time()
     influence_module = GraphInfluenceModule(model, data, args, args.eval_metric, 1, eval_node_idxs, metric_fn)
     if args.element_type == 'edge_edit':
-        r_total_inf, r_retrain_inf, r_perturb_inf, module_scale, inv_hvp_norm, num_ins = influence_module.calculate_influence(removal_candidates, 'edge_removal')
-        i_total_inf, i_retrain_inf, i_perturb_inf, module_scale, inv_hvp_norm, num_ins = influence_module.calculate_influence(insertion_candidates, 'edge_insertion')
+        r_total_inf, r_parameter_shift_inf, r_message_passing_inf, module_scale, inv_hvp_norm, num_ins = influence_module.calculate_influence(removal_candidates, 'edge_removal')
+        i_total_inf, i_parameter_shift_inf, i_message_passing_inf, module_scale, inv_hvp_norm, num_ins = influence_module.calculate_influence(insertion_candidates, 'edge_insertion')
         
         total_inf = torch.cat((r_total_inf, i_total_inf), dim=0)
-        retrain_inf = torch.cat((r_retrain_inf, i_retrain_inf), dim=0)
-        perturb_inf = torch.cat((r_perturb_inf, i_perturb_inf), dim=0)
+        parameter_shift_inf = torch.cat((r_parameter_shift_inf, i_parameter_shift_inf), dim=0)
+        message_passing_inf = torch.cat((r_message_passing_inf, i_message_passing_inf), dim=0)
     else:
-        total_inf, retrain_inf, perturb_inf, module_scale, inv_hvp_norm, num_ins = influence_module.calculate_influence(candidates, args.element_type)
+        total_inf, parameter_shift_inf, message_passing_inf, module_scale, inv_hvp_norm, num_ins = influence_module.calculate_influence(candidates, args.element_type)
     print(f'Consumed time: {time.time()-start_time:.2f}s')
 
     if args.hessian_type == 'hessian':
         loo = calculate_loo(model, data, candidates, args, seed, dirs['loo_model'], metric_fn, args.element_type)
 
-        mask = torch.logical_and(is_within_2std(retrain_inf.squeeze()), is_within_2std(torch.tensor(loo)))
-        plot_influence_loss(retrain_inf.squeeze()[mask], torch.tensor(loo)[mask], dirs['result'], save_name_nip, args, title=dir['fig_title'])
+        mask = torch.logical_and(is_within_2std(parameter_shift_inf.squeeze()), is_within_2std(torch.tensor(loo)))
+        plot_influence_loss(parameter_shift_inf.squeeze()[mask], torch.tensor(loo)[mask], dirs['result'], save_name_nip, args, title=dir['fig_title'])
 
     elif args.hessian_type == 'GNH':
         if args.element_type == "edge_edit":
-            r_total_pbrf, r_retrain_pbrf, r_perturb_pbrf = get_pbrf(args, model, data, removal_candidates, seed, dirs, 'edge_removal')
-            i_total_pbrf, i_retrain_pbrf, i_perturb_pbrf = get_pbrf(args, model, data, insertion_candidates, seed, dirs, 'edge_insertion')
+            r_total_pbrf, r_parameter_shift_pbrf, r_message_passing_pbrf = get_pbrf(args, model, data, removal_candidates, seed, dirs, 'edge_removal')
+            i_total_pbrf, i_parameter_shift_pbrf, i_message_passing_pbrf = get_pbrf(args, model, data, insertion_candidates, seed, dirs, 'edge_insertion')
             
             total_pbrf = r_total_pbrf + i_total_pbrf
-            retrain_pbrf = r_retrain_pbrf + i_retrain_pbrf
-            perturb_pbrf = r_perturb_pbrf + i_perturb_pbrf
+            parameter_shift_pbrf = r_parameter_shift_pbrf + i_parameter_shift_pbrf
+            message_passing_pbrf = r_message_passing_pbrf + i_message_passing_pbrf
             r_size = len(r_total_pbrf)
         else:
-            total_pbrf, retrain_pbrf, perturb_pbrf = get_pbrf(args, model, data, candidates, seed, dirs, args.element_type)
+            total_pbrf, parameter_shift_pbrf, message_passing_pbrf = get_pbrf(args, model, data, candidates, seed, dirs, args.element_type)
             r_size = None
         
-        rename_result_dir(args, retrain_inf, retrain_pbrf, perturb_inf, perturb_pbrf, dirs)
+        rename_result_dir(args, parameter_shift_inf, parameter_shift_pbrf, message_passing_inf, message_passing_pbrf, dirs)
         k=2
         mask = torch.logical_and(is_within_2std(total_inf.squeeze(),k), is_within_2std(torch.tensor(total_pbrf),k))
         plot_influence_loss(total_inf.squeeze()[mask], torch.tensor(total_pbrf)[mask], dirs['result'], save_name, args, title=dirs['fig_title'], mask=mask, r_size=r_size)
-        plot_influence_loss(retrain_inf.squeeze()[mask], perturb_inf.squeeze()[mask], dirs['result'], save_name_rtpt, args, xlabel="Parameter Shift Effect", ylabel="Propagation Effect", title=dirs['fig_title'], mask=mask, r_size=r_size)
+        plot_influence_loss(parameter_shift_inf.squeeze()[mask], message_passing_inf.squeeze()[mask], dirs['result'], save_name_rtpt, args, xlabel="Parameter Shift Effect", ylabel="Propagation Effect", title=dirs['fig_title'], mask=mask, r_size=r_size)

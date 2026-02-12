@@ -9,3 +9,6 @@
 *.graph
 *.index
 .nogic
+/datasets
+/checkpoints
+/results
