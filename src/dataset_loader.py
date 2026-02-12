@@ -16,6 +16,8 @@ from torch_geometric.utils.undirected import is_undirected, to_undirected
 from torch_geometric.io import read_npz
 from ogb.nodeproppred import PygNodePropPredDataset
 import os
+import shutil
+from types import SimpleNamespace
 #from ogb.nodeproppred import PygNodePropPredDataset
 
 
@@ -72,11 +74,51 @@ class dataset_heterophily(InMemoryDataset):
         return ['data.pt']
 
     def download(self):
-        pass
+        raw_path = self.raw_paths[0]
+        if osp.exists(raw_path):
+            return
+
+        os.makedirs(self.raw_dir, exist_ok=True)
+
+        if self.p2raw is not None:
+            src = self.p2raw
+            if osp.isdir(src):
+                src = osp.join(src, self.name)
+            if not osp.exists(src):
+                raise FileNotFoundError(
+                    f'raw dataset not found at "{src}"')
+            shutil.copy(src, raw_path)
+            return
+
+        if self.name in ['chameleon', 'squirrel']:
+            pyg_dataset = WikipediaNetwork(
+                root=self.root, name=self.name, geom_gcn_preprocess=True)
+            data = pyg_dataset[0]
+        elif self.name == 'film':
+            pyg_dataset = Actor(root=self.root)
+            data = pyg_dataset[0]
+        else:
+            raise ValueError(f'Unsupported heterophily dataset: {self.name}')
+
+        obj = SimpleNamespace()
+        obj.x = data.x
+        obj.edge_index = data.edge_index
+        obj.y = data.y
+        if hasattr(data, 'train_mask'):
+            obj.train_mask = data.train_mask
+        if hasattr(data, 'val_mask'):
+            obj.val_mask = data.val_mask
+        if hasattr(data, 'test_mask'):
+            obj.test_mask = data.test_mask
+        obj.train_percent = self._train_percent
+
+        with open(raw_path, 'wb') as f:
+            pickle.dump(obj, f)
 
     def process(self):
-        p2f = osp.join(self.raw_dir, self.name)
-        with open(p2f, 'rb') as f:
+        # Process is responsible for converting raw files into processed tensors.
+        raw_path = self.raw_paths[0]
+        with open(raw_path, 'rb') as f:
             d = pickle.load(f)
         data = Data()
         for key, value in d.__dict__.items():

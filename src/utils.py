@@ -95,8 +95,16 @@ def get_edge_weight(graph, edge=None, node=None):
     
     if edge is not None:
         edge_index = graph.edge_index
-        undirected_edges = torch.stack([edge, torch.tensor([edge[1].item(), edge[0].item()]).to(edge.device)])
-        edge_idx = torch.all(torch.isin(edge_index.T, undirected_edges), dim=1).nonzero().squeeze()
+        if edge.dim() != 1 or edge.numel() != 2:
+            raise ValueError("edge must be a 1D tensor with 2 node indices.")
+
+        # Match both directions and keep index tensor 1D even when one match exists.
+        u, v = edge[0], edge[1]
+        match_mask = torch.logical_or(
+            torch.logical_and(edge_index[0] == u, edge_index[1] == v),
+            torch.logical_and(edge_index[0] == v, edge_index[1] == u),
+        )
+        edge_idx = match_mask.nonzero(as_tuple=False).view(-1)
 
         return graph.edge_weight[edge_idx], edge_idx
     elif node is not None:
