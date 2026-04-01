@@ -18,6 +18,7 @@ pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -
 pip install matplotlib
 pip install ogb
 pip install tqdm
+pip install hydra-core hydra-submitit-launcher omegaconf
 ```
 
 ## Quick Start

@@ -2,6 +2,8 @@ import torch
 import time
 import torch.nn as nn
 import os.path as osp
+import hashlib
+import math
 import torch.optim as optim
 from torch.nn import functional as F
 from torch.autograd import grad
@@ -11,6 +13,93 @@ from src import train, train_pbrf, mean_validation_loss, DataLoader, GNN, make_m
 from src.graph_utils import *
 from src.utils import *
 import argparse
+
+
+def _candidate_edge_checkpoint_name(candidate_edge):
+    edge_tensor = candidate_edge.detach().cpu().to(torch.long)
+
+    if edge_tensor.dim() == 1:
+        edge_tensor = edge_tensor.view(1, 2)
+    elif edge_tensor.dim() != 2 or edge_tensor.shape[1] != 2:
+        raise ValueError("candidate_edge must have shape [2] or [num_edges, 2].")
+
+    # Canonicalize undirected edge pairs for deterministic cache keys.
+    edge_pairs = [tuple(sorted((int(edge[0]), int(edge[1])))) for edge in edge_tensor]
+    edge_pairs.sort()
+    payload = ";".join(f"{u}-{v}" for u, v in edge_pairs)
+    digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()[:20]
+    return f"cand_e{len(edge_pairs)}_{digest}.pth"
+
+
+def _ensure_optional_experiment_defaults(args):
+    if not hasattr(args, "experiment_name"):
+        args.experiment_name = "none"
+    if not hasattr(args, "num_of_clusters"):
+        args.num_of_clusters = 3
+    if not hasattr(args, "edges_per_cluster"):
+        args.edges_per_cluster = -1
+    if not hasattr(args, "cluster_ratio_percent"):
+        args.cluster_ratio_percent = 10
+    if not hasattr(args, "intra_cluster_dist"):
+        args.intra_cluster_dist = 1
+    if not hasattr(args, "inter_cluster_dist"):
+        args.inter_cluster_dist = 1
+    if not hasattr(args, "removal_candidate_sampler"):
+        args.removal_candidate_sampler = "uniform"
+    if not hasattr(args, "removal_neighbor_dist"):
+        args.removal_neighbor_dist = 1
+    if not hasattr(args, "cluster_candidate_init_only"):
+        args.cluster_candidate_init_only = 0
+    if not hasattr(args, "cluster_candidate_force_rebuild"):
+        args.cluster_candidate_force_rebuild = 0
+    if not hasattr(args, "cluster_candidate_cache_root"):
+        args.cluster_candidate_cache_root = "candidate_cache"
+
+    args.num_of_clusters = int(args.num_of_clusters)
+    args.edges_per_cluster = int(args.edges_per_cluster)
+    args.cluster_ratio_percent = int(args.cluster_ratio_percent)
+    args.intra_cluster_dist = int(args.intra_cluster_dist)
+    args.inter_cluster_dist = int(args.inter_cluster_dist)
+    args.removal_neighbor_dist = int(args.removal_neighbor_dist)
+    args.cluster_candidate_init_only = int(args.cluster_candidate_init_only)
+    args.cluster_candidate_force_rebuild = int(args.cluster_candidate_force_rebuild)
+    return args
+
+
+def _count_unique_undirected_edges(data):
+    edges = data.edge_index.T
+    sorted_edges = torch.sort(edges, dim=1)[0]
+    unique_edges = torch.unique(sorted_edges, dim=0)
+    return int(unique_edges.shape[0])
+
+
+def _apply_experiment_runtime_overrides(args, data):
+    if getattr(args, "experiment_name", "none") != "clusters":
+        return args
+
+    if args.num_of_clusters <= 0:
+        raise ValueError("experiment.num_of_clusters must be positive.")
+    if args.intra_cluster_dist <= 0:
+        raise ValueError("experiment.intra_cluster_dist must be positive.")
+    if args.inter_cluster_dist <= 0:
+        raise ValueError("experiment.inter_cluster_dist must be positive.")
+
+    total_edges = _count_unique_undirected_edges(data)
+    target_total_edges_to_remove = round(total_edges * (float(args.cluster_ratio_percent) / 100.0))
+    if args.edges_per_cluster is None or int(args.edges_per_cluster) <= 0:
+        args.edges_per_cluster = max(1, math.floor(target_total_edges_to_remove / args.num_of_clusters))
+
+    args.edges_per_cluster = int(args.edges_per_cluster)
+    args.num_group_elem = int(args.num_of_clusters * args.edges_per_cluster)
+    remainder = target_total_edges_to_remove - args.num_group_elem
+
+    print(
+        f"[EXPERIMENT] clusters: total_edges={total_edges}, target_total={target_total_edges_to_remove}, "
+        f"num_of_clusters={args.num_of_clusters}, edges_per_cluster={args.edges_per_cluster}, "
+        f"num_group_elem={args.num_group_elem}, dropped_remainder={remainder}, "
+        f"intra_cluster_dist={args.intra_cluster_dist}, inter_cluster_dist={args.inter_cluster_dist}"
+    )
+    return args
 
 
 class CrossEntropyObjective(BaseObjective):
@@ -80,7 +169,7 @@ class GraphInfluenceModule:
 
         return self.validation_splits
         
-    def get_parameter_shifting_influence(self, targets, influence_type, params):
+    def get_parameter_shifting_influence(self, targets, influence_type, params, candidate_idx=None):
         """
         target: the target to estimate influence
         influence_type: the type of graph element. Choices: {'edge_removal', 'edge_insertion'}
@@ -106,17 +195,52 @@ class GraphInfluenceModule:
         if train_influenced_nodes.numel() == 0:
             return [0 for i in range(self.num_folds)], 0
         else:
-            origin_indiv_grad = self.get_indiv_grad(origin_logit[train_influenced_nodes], self.graph.y[train_influenced_nodes], params)
-            perturbed_grad = self.get_indiv_grad(perturbed_logit[train_influenced_nodes], self.graph.y[train_influenced_nodes], params)
+            # Memory-efficient equivalent of summing per-node gradients:
+            # grad(sum_i loss_i) == sum_i grad(loss_i)
+            target_labels = self.graph.y[train_influenced_nodes]
+            origin_loss = F.cross_entropy(origin_logit[train_influenced_nodes], target_labels, reduction="sum")
+            perturbed_loss = F.cross_entropy(perturbed_logit[train_influenced_nodes], target_labels, reduction="sum")
+            origin_grad = grad(origin_loss, params, retain_graph=False)
+            perturbed_grad = grad(perturbed_loss, params, retain_graph=False)
+            origin_grad = [g.detach() for g in origin_grad]
+            perturbed_grad = [g.detach() for g in perturbed_grad]
 
             k_fold_edge_influence = []
+            k_fold_mean_grad_cos_sim = []
             for i in range(self.num_folds):
                 edge_influence = 0
-                for inv_hvp_elem, origin_indiv_elem, perturbed_elem in zip(self.inv_hvp[i], origin_indiv_grad, perturbed_grad): 
-                    elem_influence = inv_hvp_elem * (origin_indiv_elem.sum(dim=0)-perturbed_elem.sum(dim=0))
+                param_cos_sims = []
+                for inv_hvp_elem, origin_grad_elem, perturbed_grad_elem in zip(
+                    self.inv_hvp[i], origin_grad, perturbed_grad
+                ):
+                    elem_influence = inv_hvp_elem * (origin_grad_elem - perturbed_grad_elem)
+
+                    grad_cos_sim = F.cosine_similarity(
+                        origin_grad_elem.reshape(1, -1),
+                        perturbed_grad_elem.reshape(1, -1),
+                        dim=1,
+                        eps=1e-12,
+                    ).item()
+                    param_cos_sims.append(grad_cos_sim)
+
                     edge_influence += elem_influence.sum()
+                mean_grad_cos_sim = sum(param_cos_sims) / len(param_cos_sims) if param_cos_sims else float("nan")
+                k_fold_mean_grad_cos_sim.append(mean_grad_cos_sim)
                 edge_influence = edge_influence / self.graph.train_mask.sum()
                 k_fold_edge_influence.append(edge_influence.item())
+
+            candidate_label = "candidate" if candidate_idx is None else f"candidate {candidate_idx}"
+            num_target_edges = 1 if targets.dim() == 1 else int(targets.shape[0])
+            overall_mean_grad_cos_sim = (
+                sum(k_fold_mean_grad_cos_sim) / len(k_fold_mean_grad_cos_sim)
+                if k_fold_mean_grad_cos_sim else float("nan")
+            )
+            fold_summary = ", ".join(f"{v:.6f}" for v in k_fold_mean_grad_cos_sim)
+            tqdm.write(
+                f"[grad-cos] {candidate_label}: mean={overall_mean_grad_cos_sim:.6f}, "
+                f"folds=[{fold_summary}], target_edges={num_target_edges}, "
+                f"influenced_train_nodes={train_influenced_nodes.numel()}"
+            )
 
             return k_fold_edge_influence, train_influenced_nodes.numel()
     
@@ -174,8 +298,13 @@ class GraphInfluenceModule:
         message_passing_inf_list = []
         total_num_influenced_nodes = 0
 
-        for target in tqdm(candidates):
-            parameter_shift_inf, num_influenced_nodes = self.get_parameter_shifting_influence(target, influence_type, params)
+        for candidate_idx, target in enumerate(tqdm(candidates), start=1):
+            parameter_shift_inf, num_influenced_nodes = self.get_parameter_shifting_influence(
+                target,
+                influence_type,
+                params,
+                candidate_idx=candidate_idx,
+            )
             parameter_shift_inf = torch.tensor(parameter_shift_inf)
             total_num_influenced_nodes += num_influenced_nodes
             parameter_shift_inf_list.append(parameter_shift_inf)
@@ -191,7 +320,15 @@ class GraphInfluenceModule:
         message_passing_inf_list = torch.stack(message_passing_inf_list)
         total_inf_list = torch.stack(total_inf_list)
         
-        return total_inf_list, parameter_shift_inf_list, message_passing_inf_list, self.module.scale, self.inv_hvp_norm, num_influenced_nodes/candidates.shape[0]
+        avg_num_influenced_nodes = total_num_influenced_nodes / candidates.shape[0]
+        return (
+            total_inf_list,
+            parameter_shift_inf_list,
+            message_passing_inf_list,
+            self.module.scale,
+            self.inv_hvp_norm,
+            avg_num_influenced_nodes,
+        )
     
     def _load_exact_k_hop_neighbors(self):
         if self.eval_metric == 'feature_ablation':
@@ -200,6 +337,25 @@ class GraphInfluenceModule:
             return None
 
     def _create_lissa_module(self):
+        lissa_scale = float(self.args.scale)
+        exp_name = getattr(self.args, "experiment_name", "none")
+        auto_scale_by_experiment = {
+            "non_neighbor_edges": 32.0,  # exp3
+            "clusters": 32.0,            # exp5 (and cluster-style runs)
+        }
+        if (
+            self.args.hessian_type == "GNH"
+            and exp_name in auto_scale_by_experiment
+            and lissa_scale <= 1.0
+        ):
+            # Cluster/grouped edge edits commonly diverge with scale=1.0, causing many restarts.
+            # Keep user-provided scales intact and only stabilize the default.
+            lissa_scale = auto_scale_by_experiment[exp_name]
+            print(
+                f"[LiSSA] Auto-adjust scale for {exp_name}: {float(self.args.scale):.2f} -> {lissa_scale:.2f} "
+                f"(hessian_type={self.args.hessian_type})"
+            )
+
         return LiSSAInfluenceModule(
             graph=self.graph,
             model=self.model,
@@ -210,7 +366,7 @@ class GraphInfluenceModule:
             damp=self.args.damp,
             repeat=1,
             lissa_iter = self.args.lissa_iter,
-            scale=self.args.scale,
+            scale=lissa_scale,
             depth=None,
             gnh=True if self.args.hessian_type=='GNH' else False,
             full_batch=True
@@ -239,13 +395,19 @@ class GraphInfluenceModule:
     def get_nodes_within_km1_hop(self):
         if self.args.dataset == "Squirrel":
             # To do: Integrate across all datasets.
-            self.nodes_within_km1_hop = find_k_hop_neighbors_bfs(self.graph, self.args.num_layers-1)
+            self.nodes_within_km1_hop = find_k_hop_neighbors_bfs(self.graph, self.args.num_layers-1, device="cpu")
         if self.nodes_within_km1_hop is None:
             self.nodes_within_km1_hop = find_nodes_within_k_hop(self.graph, self.args.num_layers-1)
 
+    @staticmethod
+    def _set_leaf_edge_weight_requires_grad(graph):
+        # Some graph edits (clone/slicing/cat) can produce non-leaf edge_weight.
+        # Autograd flags can be toggled only on leaf tensors.
+        graph.edge_weight = graph.edge_weight.detach().clone().requires_grad_(True)
+
     def get_weight_grad_with_dummy_edges(self, insertion_candidates):
         self.graph_with_dummy_edges = add_zero_weight_edges(self.graph, insertion_candidates)
-        self.graph_with_dummy_edges.edge_weight.requires_grad = True
+        self._set_leaf_edge_weight_requires_grad(self.graph_with_dummy_edges)
         
         weight_grads = []
         if self.eval_metric == "mean_validation_loss":
@@ -276,7 +438,7 @@ class GraphInfluenceModule:
         return perturbed_logit
 
     def get_eval_result(self, model, graph):
-        graph.edge_weight.requires_grad = True
+        self._set_leaf_edge_weight_requires_grad(graph)
         eval_result = self.metric_fn(model, graph)
 
         return eval_result
@@ -287,7 +449,7 @@ class GraphInfluenceModule:
         inv_hvps = []
         inv_hvp_norms = []
         if eval_metric == 'mean_validation_loss':
-            graph.edge_weight.requires_grad = True
+            self._set_leaf_edge_weight_requires_grad(graph)
             
             for i in range(num_folds):
                 params = list(model.parameters())
@@ -303,9 +465,9 @@ class GraphInfluenceModule:
                 inv_hvps.append(inv_hvp)
                 inv_hvp_norms.append(inv_hvp_norm)
         elif eval_metric in ['feature_ablation','dirichlet_energy']:
-            graph.edge_weight.requires_grad = True
+            self._set_leaf_edge_weight_requires_grad(graph)
             params = list(model.parameters())
-            eval_result = metric_fn(model, graph)
+            eval_result = self.metric_fn(model, graph)
             param_grad = grad(eval_result, params, retain_graph=True)
             flatten_vec = flatten_params_like(param_grad, params)
             weight_grad = grad(eval_result, graph.edge_weight)[0]
@@ -341,6 +503,8 @@ class GraphInfluenceModule:
 
 def calculate_loo(model, graph, candidate_edges, args, seed, model_save_dir, metric_fn, element_type):
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    in_dim = int(graph.x.shape[-1])
+    num_classes = int(torch.max(graph.y).item()) + 1
 
     evaluation_result = metric_fn(model, graph)
 
@@ -358,15 +522,16 @@ def calculate_loo(model, graph, candidate_edges, args, seed, model_save_dir, met
         set_seed(seed)
         new_model = GNN(
                 name=args.model,
-                in_dim=dataset.num_node_features, 
+                in_dim=in_dim,
                 hidden_dim=args.hidden_dim, 
-                num_classes=dataset.num_classes, 
+                num_classes=num_classes,
                 num_layers=args.num_layers,
                 linear=args.linear,
-                bias=args.bias
+                bias=args.bias,
+                num_heads=args.num_heads,
             )
         
-        edge_perturb_model_path = osp.join(model_save_dir, f'{candidate_edge[0]}_{candidate_edge[1]}.pth')
+        edge_perturb_model_path = osp.join(model_save_dir, _candidate_edge_checkpoint_name(candidate_edge))
         if osp.isfile(edge_perturb_model_path):
             edge_perturb_state_dict = torch.load(edge_perturb_model_path, weights_only=True)
             new_model.load_state_dict(edge_perturb_state_dict)
@@ -390,9 +555,11 @@ def calculate_loo(model, graph, candidate_edges, args, seed, model_save_dir, met
 
 def calculate_pbrf(model, graph, candidate_edges, args, seed, model_dir, metric_fn, element_type):
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    in_dim = int(graph.x.shape[-1])
+    num_classes = int(torch.max(graph.y).item()) + 1
     eval_result = metric_fn(model, graph)
 
-    km1_hop_neighbors = find_k_hop_neighbors_bfs(graph, args.num_layers-1)
+    km1_hop_neighbors = find_k_hop_neighbors_bfs(graph, args.num_layers-1, device="cpu")
     y_s = model(graph)
     theta_s = flatten_parameters(model).detach()
     loss_func = nn.CrossEntropyLoss()
@@ -407,17 +574,25 @@ def calculate_pbrf(model, graph, candidate_edges, args, seed, model_dir, metric_
     pbrf_nip_results = []
     pbrf_nrt_results = []
     for edge_idx, candidate_edge in enumerate(tqdm(candidate_edges)):
-        data.x.requires_grad = False
-        data.edge_weight.requires_grad = False
+        graph.x.requires_grad = False
+        graph.edge_weight.requires_grad = False
 
         if candidate_edge.dim() == 2:
             influenced_nodes = []
             for target in candidate_edge:
-                i_nodes = torch.unique(torch.cat([km1_hop_neighbors[target[0].item()], km1_hop_neighbors[target[1].item()]])).to(torch.long)
+                neighbors = torch.unique(torch.cat([
+                    km1_hop_neighbors[target[0].item()],
+                    km1_hop_neighbors[target[1].item()],
+                ])).to(torch.long)
+                i_nodes = neighbors.to(graph.train_mask.device)
                 influenced_nodes.append(i_nodes)
             influenced_nodes = torch.unique(torch.cat(influenced_nodes, dim=-1))
         else:
-            influenced_nodes = torch.unique(torch.cat([km1_hop_neighbors[candidate_edge[0].item()], km1_hop_neighbors[candidate_edge[1].item()]])).to(torch.long)
+            neighbors = torch.unique(torch.cat([
+                km1_hop_neighbors[candidate_edge[0].item()],
+                km1_hop_neighbors[candidate_edge[1].item()],
+            ])).to(torch.long)
+            influenced_nodes = neighbors.to(graph.train_mask.device)
         influenced_mask = torch.zeros_like(graph.train_mask)
         influenced_mask[influenced_nodes] = 1
         train_influenced_mask = torch.logical_and(influenced_mask, graph.train_mask)
@@ -443,21 +618,16 @@ def calculate_pbrf(model, graph, candidate_edges, args, seed, model_dir, metric_
             set_seed(seed)
             new_model = GNN(
                     name=args.model,
-                    in_dim=dataset.num_node_features, 
+                    in_dim=in_dim,
                     hidden_dim=args.hidden_dim, 
-                    num_classes=dataset.num_classes, 
+                    num_classes=num_classes,
                     num_layers=args.num_layers,
                     linear=args.linear,
                     bias=args.bias,
                     num_heads=args.num_heads
                 )
             
-            edges_name = ''
-            for edge in candidate_edge:
-                edge_name = f'{edge[0]}_{edge[1]}_'
-                edges_name += edge_name
-            edges_name = edges_name[:-1] + '.pth'
-            edge_perturb_model_path = osp.join(model_dir, edges_name)
+            edge_perturb_model_path = osp.join(model_dir, _candidate_edge_checkpoint_name(candidate_edge))
             if osp.isfile(edge_perturb_model_path):
                 edge_perturb_state_dict = torch.load(edge_perturb_model_path, weights_only=True)
                 new_model.load_state_dict(edge_perturb_state_dict)
@@ -487,9 +657,13 @@ def calculate_pbrf(model, graph, candidate_edges, args, seed, model_dir, metric_
     return pbrf_results, pbrf_nip_results, pbrf_nrt_results
 
 
-def get_pbrf(args, model, data, candidate_edges, seed, dirs, element_type):
+def get_pbrf(args, model, data, candidate_edges, seed, dirs, element_type, metric_fn=None):
     print('Calculate PBRF...')
     start_time = time.time()
+    if metric_fn is None:
+        metric_fn = globals().get("metric_fn")
+        if metric_fn is None:
+            raise ValueError("metric_fn must be provided to get_pbrf.")
     edge_pbrf, act_nip, act_nrt = calculate_pbrf(model, data, candidate_edges, args, seed, dirs["pbrf_model"], metric_fn, element_type)
     print(f'Consumed time: {time.time()-start_time:.2f}s')
 
@@ -521,14 +695,28 @@ if __name__ == '__main__':
     parser.add_argument("--json_config", type=str, default="none")
     parser.add_argument("--fig_title", type=str, default="none")
     parser.add_argument("--num_group_elem", type=int, default=1)
+    parser.add_argument("--experiment_name", type=str, default="none")
+    parser.add_argument("--num_of_clusters", type=int, default=3)
+    parser.add_argument("--edges_per_cluster", type=int, default=-1)
+    parser.add_argument("--cluster_ratio_percent", type=int, default=10)
+    parser.add_argument("--intra_cluster_dist", type=int, default=1)
+    parser.add_argument("--inter_cluster_dist", type=int, default=1)
+    parser.add_argument("--removal_cluster_dist", type=int, default=1)
+    parser.add_argument(
+        "--removal_candidate_sampler",
+        type=str,
+        default="uniform",
+        choices=["uniform", "group_non_neighbor", "group_neighbor"],
+    )
+    parser.add_argument("--removal_neighbor_dist", type=int, default=1)
+    parser.add_argument("--cluster_candidate_init_only", type=int, default=0)
+    parser.add_argument("--cluster_candidate_force_rebuild", type=int, default=0)
+    parser.add_argument("--cluster_candidate_cache_root", type=str, default="candidate_cache")
 
     args = parser.parse_args()
     args.linear = bool(args.linear)
     args.bias = bool(args.bias)
     print(args)
-
-    dirs = make_dirs(args)
-    save_config(args, osp.join(dirs['result'], 'config.json'), dirs)
 
     if args.json_config != "none":
         import json
@@ -543,6 +731,8 @@ if __name__ == '__main__':
             args.fig_title = args.eval_metric
         print(args)
 
+    args = _ensure_optional_experiment_defaults(args)
+
     WD = args.weight_decay
     PBRF_WD = args.pbrf_weight_decay
     if args.hessian_type == 'hessian':
@@ -554,6 +744,27 @@ if __name__ == '__main__':
     args.num_classes = dataset.num_classes
     data = dataset[0]
     data.edge_weight = torch.ones((data.edge_index.shape[1], ))
+    args = _apply_experiment_runtime_overrides(args, data)
+
+    if (
+        args.cluster_candidate_init_only
+        and args.experiment_name == "clusters"
+        and args.element_type in ["edge_removal", "edge_edit"]
+    ):
+        candidates, cache_path, was_built = build_or_load_clustered_edge_removal_candidates(
+            graph=data,
+            args=args,
+            force_rebuild=bool(args.cluster_candidate_force_rebuild),
+        )
+        status = "built" if was_built else "loaded"
+        print(
+            f"[CANDIDATE-CACHE] init-only {status}: path={cache_path}, "
+            f"shape={tuple(candidates.shape)}"
+        )
+        raise SystemExit(0)
+
+    dirs = make_dirs(args)
+    save_config(args, osp.join(dirs['result'], 'config.json'), dirs)
 
     SEEDS=[1941488137,4198936517,983997847,4023022221,4019585660,2108550661,1648766618,629014539,3212139042,2424918363]
     seed = SEEDS[0]
@@ -619,12 +830,14 @@ if __name__ == '__main__':
 
     if args.element_type in ['edge_removal', 'edge_edit']:
         set_seed(seed)
-        num_candidates = args.num_removal_candidates * args.num_group_elem
-        candidates = get_edge_removal_candidates(data, num_candidates)
-        candidates = candidates.view(args.num_removal_candidates, args.num_group_elem, 2)
-
-        num_removal_candidates = num_candidates
-        removal_candidates = candidates
+        if args.experiment_name == "clusters":
+            removal_candidates = get_grouped_edge_removal_candidates(data, args)
+            candidates = removal_candidates
+        else:
+            num_candidates = args.num_removal_candidates * args.num_group_elem
+            candidates = get_edge_removal_candidates(data, num_candidates)
+            candidates = candidates.view(args.num_removal_candidates, args.num_group_elem, 2)
+            removal_candidates = candidates
     if args.element_type in ['edge_insertion', 'edge_edit']:
         set_seed(seed)
         num_candidates = args.num_insertion_candidates * args.num_group_elem
@@ -651,8 +864,14 @@ if __name__ == '__main__':
     if args.hessian_type == 'hessian':
         loo = calculate_loo(model, data, candidates, args, seed, dirs['loo_model'], metric_fn, args.element_type)
 
-        mask = torch.logical_and(is_within_2std(parameter_shift_inf.squeeze()), is_within_2std(torch.tensor(loo)))
-        plot_influence_loss(parameter_shift_inf.squeeze()[mask], torch.tensor(loo)[mask], dirs['result'], save_name_nip, args, title=dir['fig_title'])
+        parameter_shift_vec = parameter_shift_inf.detach().reshape(-1).to(torch.float32).cpu()
+        loo_vec = torch.as_tensor(loo, dtype=torch.float32).reshape(-1).cpu()
+        common_n = min(parameter_shift_vec.numel(), loo_vec.numel())
+        if common_n > 0:
+            parameter_shift_vec = parameter_shift_vec[:common_n]
+            loo_vec = loo_vec[:common_n]
+            mask = torch.logical_and(is_within_2std(parameter_shift_vec), is_within_2std(loo_vec))
+            plot_influence_loss(parameter_shift_vec[mask], loo_vec[mask], dirs['result'], save_name_nip, args, title=dirs['fig_title'])
 
     elif args.hessian_type == 'GNH':
         if args.element_type == "edge_edit":
@@ -669,6 +888,21 @@ if __name__ == '__main__':
         
         rename_result_dir(args, parameter_shift_inf, parameter_shift_pbrf, message_passing_inf, message_passing_pbrf, dirs)
         k=2
-        mask = torch.logical_and(is_within_2std(total_inf.squeeze(),k), is_within_2std(torch.tensor(total_pbrf),k))
-        plot_influence_loss(total_inf.squeeze()[mask], torch.tensor(total_pbrf)[mask], dirs['result'], save_name, args, title=dirs['fig_title'], mask=mask, r_size=r_size)
-        plot_influence_loss(parameter_shift_inf.squeeze()[mask], message_passing_inf.squeeze()[mask], dirs['result'], save_name_rtpt, args, xlabel="Parameter Shift Effect", ylabel="Propagation Effect", title=dirs['fig_title'], mask=mask, r_size=r_size)
+        total_inf_vec = total_inf.detach().reshape(-1).to(torch.float32).cpu()
+        total_pbrf_vec = torch.as_tensor(total_pbrf, dtype=torch.float32).reshape(-1).cpu()
+        parameter_shift_vec = parameter_shift_inf.detach().reshape(-1).to(torch.float32).cpu()
+        message_passing_vec = message_passing_inf.detach().reshape(-1).to(torch.float32).cpu()
+        common_n = min(
+            total_inf_vec.numel(),
+            total_pbrf_vec.numel(),
+            parameter_shift_vec.numel(),
+            message_passing_vec.numel(),
+        )
+        if common_n > 0:
+            total_inf_vec = total_inf_vec[:common_n]
+            total_pbrf_vec = total_pbrf_vec[:common_n]
+            parameter_shift_vec = parameter_shift_vec[:common_n]
+            message_passing_vec = message_passing_vec[:common_n]
+            mask = torch.logical_and(is_within_2std(total_inf_vec, k), is_within_2std(total_pbrf_vec, k))
+            plot_influence_loss(total_inf_vec[mask], total_pbrf_vec[mask], dirs['result'], save_name, args, title=dirs['fig_title'], mask=mask, r_size=r_size)
+            plot_influence_loss(parameter_shift_vec[mask], message_passing_vec[mask], dirs['result'], save_name_rtpt, args, xlabel="Parameter Shift Effect", ylabel="Propagation Effect", title=dirs['fig_title'], mask=mask, r_size=r_size)

@@ -12,3 +12,11 @@
 /datasets
 /checkpoints
 /results
+/conf
+/multirun
+/experiments
+/outputs
+/tmp*
+/archive
+.codex
+candidate_cache

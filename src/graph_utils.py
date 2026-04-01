@@ -55,15 +55,22 @@ def find_nodes_within_k_hop(graph, k):
 
 
 
-def find_k_hop_neighbors_bfs(graph, k):
+def find_k_hop_neighbors_bfs(graph, k, device="cpu"):
+    """Return dict[node] -> tensor of nodes within k hops.
+
+    Defaults to building on CPU to avoid large resident GPU tensors. Pass
+    `device=graph.x.device` only when the caller truly needs the neighbor
+    tensors on GPU.
+    """
+
     k_hop_neighbors = defaultdict(list)
+    edge_index = graph.edge_index.to(device)
 
     for node_idx in range(graph.num_nodes):
-        # k-hop 서브그래프의 노드 집합 추출
         subset, _, _, _ = k_hop_subgraph(
-            node_idx, k, graph.edge_index, relabel_nodes=False
+            node_idx, k, edge_index, relabel_nodes=False
         )
-        k_hop_neighbors[node_idx] = subset.to(graph.x.device)
+        k_hop_neighbors[node_idx] = subset.to(device)
 
     return k_hop_neighbors
 

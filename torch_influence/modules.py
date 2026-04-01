@@ -1,4 +1,5 @@
 import logging
+import math
 from typing import Callable, Optional
 
 import numpy as np
@@ -289,6 +290,31 @@ class LiSSAInfluenceModule(BaseInfluenceModule):
         self.full_batch = full_batch
         self.lissa_iter = lissa_iter
 
+    def _increase_scale(self, mode: str):
+        prev_scale = float(self.scale)
+        if not math.isfinite(prev_scale) or prev_scale <= 0:
+            prev_scale = 1.0
+
+        if mode in {"nonfinite_hvp", "nan_norm", "nonfinite_h_est"}:
+            if prev_scale < 64:
+                next_scale = prev_scale * 2
+            elif prev_scale < 512:
+                next_scale = prev_scale + 64
+            else:
+                next_scale = prev_scale + 128
+        elif mode == "divergence":
+            if prev_scale < 64:
+                next_scale = prev_scale * 2
+            elif prev_scale < 1024:
+                next_scale = prev_scale * 1.5
+            else:
+                next_scale = prev_scale + 128
+        else:
+            next_scale = prev_scale * 2
+
+        self.scale = min(float(next_scale), 1e6)
+        return prev_scale, float(self.scale)
+
     def inverse_hvp(self, vec):
 
         params = self._model_make_functional()
@@ -322,63 +348,102 @@ class LiSSAInfluenceModule(BaseInfluenceModule):
         params = self._model_make_functional()
         flat_params = self._flatten_params_like(params)
 
-        r=0
+        r = 0
         restart_cnt = 0
+        max_restarts = 20
         h_est = vec.clone()
-        while r < self.lissa_iter-1:
+        prev_h_est = None
+        norm = torch.tensor(float("inf"))
+
+        while r < self.lissa_iter - 1:
             hvp = self._hvp_graph(self.graph, flat_params, vec=h_est, gnh=self.gnh)
+
+            if not torch.isfinite(hvp).all():
+                restart_cnt += 1
+                prev_scale, next_scale = self._increase_scale("nonfinite_hvp")
+                print(
+                    f"Warning: non-finite HVP at iter {r}. Restart {restart_cnt}/{max_restarts}. "
+                    f"Scale {prev_scale:.2f} -> {next_scale:.2f}"
+                )
+                h_est = vec.clone()
+                prev_h_est = None
+                r = 0
+                if restart_cnt >= max_restarts:
+                    raise RuntimeError("LiSSA failed: HVP produced non-finite values too many times.")
+                continue
 
             with torch.no_grad():
                 hvp = hvp + self.damp * h_est
                 h_est = vec + h_est - hvp / self.scale
-                #h_est = vec + (1 - self.damp) * h_est - hvp / self.scale
+
+            if not torch.isfinite(h_est).all():
+                restart_cnt += 1
+                prev_scale, next_scale = self._increase_scale("nonfinite_h_est")
+                print(
+                    f"Warning: non-finite recursion state at iter {r}. Restart {restart_cnt}/{max_restarts}. "
+                    f"Scale {prev_scale:.2f} -> {next_scale:.2f}"
+                )
+                h_est = vec.clone()
+                prev_h_est = None
+                r = 0
+                if restart_cnt >= max_restarts:
+                    raise RuntimeError("LiSSA failed: recurrent estimate became non-finite too many times.")
+                continue
 
             if r >= 1:
-                norm = torch.norm(h_est-prev_h_est)
-                if norm.isnan():
-                    print("Warning NaN!!")
-                    self.scale = self.scale + 1
-                    print(f"Scale {self.scale:.2f}")
-                    h_est = vec
-                    prev_h_est = None
-                    r=0
-                if self.gnh and r > 100 and norm > 10 and self.scale < 500:
-                    print(f"Warning: Divergence detected at iteration {r}. Norm: {norm}. Increasing scale.")
-                    
-                    if self.scale < 20:
-                        self.scale = self.scale + 1
-                    elif self.scale < 100:
-                        self.scale = self.scale + 10
-                    else:
-                        self.scale = self.scale + 100
+                norm = torch.norm(h_est - prev_h_est)
+                norm_value = float(norm.detach().cpu())
 
-                    print(f"Scale {self.scale:.2f}")
-                    h_est = vec
+                if not math.isfinite(norm_value):
+                    restart_cnt += 1
+                    prev_scale, next_scale = self._increase_scale("nan_norm")
+                    print(
+                        f"Warning: non-finite norm at iter {r}. Restart {restart_cnt}/{max_restarts}. "
+                        f"Scale {prev_scale:.2f} -> {next_scale:.2f}"
+                    )
+                    h_est = vec.clone()
                     prev_h_est = None
-                    r=0
-                if not self.gnh and r > 10 and norm > 10 and self.scale < 100000:
-                    print(f"Warning: Divergence detected at iteration {r}. Norm: {norm}. Increasing scale.")
-                    self.scale = self.scale * 10
-
-                    print(f"Scale {self.scale:.2f}")
-                    h_est = vec
+                    r = 0
+                    if restart_cnt >= max_restarts:
+                        raise RuntimeError("LiSSA failed: repeated NaNs in recursions.")
+                    continue
+                if self.gnh and r > 100 and norm_value > 10 and self.scale < 50000:
+                    prev_scale, next_scale = self._increase_scale("divergence")
+                    print(
+                        f"Warning: Divergence detected at iteration {r}. Norm: {norm_value}. "
+                        f"Scale {prev_scale:.2f} -> {next_scale:.2f}"
+                    )
+                    h_est = vec.clone()
                     prev_h_est = None
-                    r=0
-                if norm < 1e-7:
-                    print(f"LiSSA converged. Norm: {norm:.7f}")
+                    r = 0
+                    continue
+                if not self.gnh and r > 10 and norm_value > 10 and self.scale < 100000:
+                    prev_scale, next_scale = self._increase_scale("divergence")
+                    print(
+                        f"Warning: Divergence detected at iteration {r}. Norm: {norm_value}. "
+                        f"Scale {prev_scale:.2f} -> {next_scale:.2f}"
+                    )
+                    h_est = vec.clone()
+                    prev_h_est = None
+                    r = 0
+                    continue
+                if norm_value < 1e-7:
+                    print(f"LiSSA converged. Norm: {norm_value:.7f}")
                     break
             r += 1
             prev_h_est = h_est.clone()
-            
-            if r <= 1:
-                display_progress(f"Calc. inverse_hvp recursions. ", r, self.lissa_iter)
-            else:
-                display_progress(f"Calc. inverse_hvp recursions. Norm: {norm:4f}", r, self.lissa_iter)
+
+            # Reduce per-iteration stdout overhead; frequent writes become a bottleneck
+            # when many multirun jobs execute LiSSA in parallel.
+            if r <= 1 or (r % 25 == 0) or (r >= self.lissa_iter - 2):
+                if r <= 1:
+                    display_progress(f"Calc. inverse_hvp recursions. ", r, self.lissa_iter)
+                else:
+                    display_progress(f"Calc. inverse_hvp recursions. Norm: {norm_value:4f}", r, self.lissa_iter)
         ihvp = h_est / self.scale
-            
-        if norm.isnan():
-            print("Error: Lissa not converged.")
-            sys.exit(0)
+
+        if not torch.isfinite(norm):
+            raise RuntimeError("LiSSA failed to converge: final norm is NaN.")
 
         with torch.no_grad():
             self._model_reinsert_params(self._reshape_like_params(flat_params), register=True)
