@@ -178,6 +178,44 @@ def _ensure_optional_defaults(args):
         args.intra_cluster_dist = 1
     if not hasattr(args, "inter_cluster_dist"):
         args.inter_cluster_dist = 1
+    if not hasattr(args, "metric_mode"):
+        args.metric_mode = "global"
+    if not hasattr(args, "groupwise_num_groups_init"):
+        args.groupwise_num_groups_init = None
+    if not hasattr(args, "groupwise_alpha_repr"):
+        args.groupwise_alpha_repr = 1.0
+    if not hasattr(args, "groupwise_beta_proxy"):
+        args.groupwise_beta_proxy = 1.0
+    if not hasattr(args, "groupwise_probe_dim"):
+        args.groupwise_probe_dim = 8
+    if not hasattr(args, "groupwise_probe_seed"):
+        args.groupwise_probe_seed = 0
+    if not hasattr(args, "groupwise_normalize_proxies"):
+        args.groupwise_normalize_proxies = 1
+    if not hasattr(args, "groupwise_damping"):
+        args.groupwise_damping = 1e-3
+    if not hasattr(args, "groupwise_split_threshold"):
+        args.groupwise_split_threshold = 1e-6
+    if not hasattr(args, "groupwise_merge_threshold"):
+        args.groupwise_merge_threshold = 1e-6
+    if not hasattr(args, "groupwise_move_threshold"):
+        args.groupwise_move_threshold = 1e-6
+    if not hasattr(args, "groupwise_radius_update_rho"):
+        args.groupwise_radius_update_rho = 1.0
+    if not hasattr(args, "groupwise_max_outer_iters"):
+        args.groupwise_max_outer_iters = 50
+    if not hasattr(args, "groupwise_chain_method"):
+        args.groupwise_chain_method = "nearest_neighbor"
+    if not hasattr(args, "groupwise_metric_energy_mode"):
+        args.groupwise_metric_energy_mode = "scalar_proxy"
+    if not hasattr(args, "groupwise_merge_topk"):
+        args.groupwise_merge_topk = 10
+    if not hasattr(args, "groupwise_max_reassign_candidates_per_group"):
+        args.groupwise_max_reassign_candidates_per_group = 5
+    if not hasattr(args, "groupwise_reassign_target_topk"):
+        args.groupwise_reassign_target_topk = 2
+    if not hasattr(args, "groupwise_min_group_size"):
+        args.groupwise_min_group_size = 2
     if not hasattr(args, "seed"):
         args.seed = DEFAULT_SEED
 
@@ -350,6 +388,35 @@ def _create_parser():
         default="contiguous",
         choices=["contiguous", "round_robin"],
     )
+    parser.add_argument("--metric_mode", type=str, default="global", choices=["global", "groupwise"])
+    parser.add_argument("--groupwise_num_groups_init", type=int, default=None)
+    parser.add_argument("--groupwise_alpha_repr", type=float, default=1.0)
+    parser.add_argument("--groupwise_beta_proxy", type=float, default=1.0)
+    parser.add_argument("--groupwise_probe_dim", type=int, default=8)
+    parser.add_argument("--groupwise_probe_seed", type=int, default=0)
+    parser.add_argument("--groupwise_normalize_proxies", type=int, default=1)
+    parser.add_argument("--groupwise_damping", type=float, default=1e-3)
+    parser.add_argument("--groupwise_split_threshold", type=float, default=1e-6)
+    parser.add_argument("--groupwise_merge_threshold", type=float, default=1e-6)
+    parser.add_argument("--groupwise_move_threshold", type=float, default=1e-6)
+    parser.add_argument("--groupwise_radius_update_rho", type=float, default=1.0)
+    parser.add_argument("--groupwise_max_outer_iters", type=int, default=50)
+    parser.add_argument(
+        "--groupwise_chain_method",
+        type=str,
+        default="nearest_neighbor",
+        choices=["nearest_neighbor", "center_distance"],
+    )
+    parser.add_argument(
+        "--groupwise_metric_energy_mode",
+        type=str,
+        default="scalar_proxy",
+        choices=["scalar_proxy"],
+    )
+    parser.add_argument("--groupwise_merge_topk", type=int, default=10)
+    parser.add_argument("--groupwise_max_reassign_candidates_per_group", type=int, default=5)
+    parser.add_argument("--groupwise_reassign_target_topk", type=int, default=2)
+    parser.add_argument("--groupwise_min_group_size", type=int, default=2)
     parser.add_argument(
         "--influence_mode",
         type=str,
@@ -410,6 +477,27 @@ def _args_from_hydra_cfg(cfg):
         intra_cluster_dist=int(exp_cfg.get("intra_cluster_dist", 1)),
         inter_cluster_dist=int(exp_cfg.get("inter_cluster_dist", 1)),
         cluster_partition_strategy=exp_cfg.get("cluster_partition_strategy", "contiguous"),
+        metric_mode=exp_cfg.get("metric_mode", "global"),
+        groupwise_num_groups_init=exp_cfg.get("groupwise_num_groups_init", None),
+        groupwise_alpha_repr=float(exp_cfg.get("groupwise_alpha_repr", 1.0)),
+        groupwise_beta_proxy=float(exp_cfg.get("groupwise_beta_proxy", 1.0)),
+        groupwise_probe_dim=int(exp_cfg.get("groupwise_probe_dim", 8)),
+        groupwise_probe_seed=int(exp_cfg.get("groupwise_probe_seed", 0)),
+        groupwise_normalize_proxies=int(exp_cfg.get("groupwise_normalize_proxies", 1)),
+        groupwise_damping=float(exp_cfg.get("groupwise_damping", 1e-3)),
+        groupwise_split_threshold=float(exp_cfg.get("groupwise_split_threshold", 1e-6)),
+        groupwise_merge_threshold=float(exp_cfg.get("groupwise_merge_threshold", 1e-6)),
+        groupwise_move_threshold=float(exp_cfg.get("groupwise_move_threshold", 1e-6)),
+        groupwise_radius_update_rho=float(exp_cfg.get("groupwise_radius_update_rho", 1.0)),
+        groupwise_max_outer_iters=int(exp_cfg.get("groupwise_max_outer_iters", 50)),
+        groupwise_chain_method=exp_cfg.get("groupwise_chain_method", "nearest_neighbor"),
+        groupwise_metric_energy_mode=exp_cfg.get("groupwise_metric_energy_mode", "scalar_proxy"),
+        groupwise_merge_topk=int(exp_cfg.get("groupwise_merge_topk", 10)),
+        groupwise_max_reassign_candidates_per_group=int(
+            exp_cfg.get("groupwise_max_reassign_candidates_per_group", 5)
+        ),
+        groupwise_reassign_target_topk=int(exp_cfg.get("groupwise_reassign_target_topk", 2)),
+        groupwise_min_group_size=int(exp_cfg.get("groupwise_min_group_size", 2)),
         influence_mode=exp_cfg.get("influence_mode", "calculate_influence"),
         seed=int(cfg_dict.get("seed", DEFAULT_SEED)),
     )
@@ -540,7 +628,7 @@ def run_experiment(args):
         num_heads=args.num_heads,
     )
     if osp.isfile(vanilla_path):
-        model_state_dict = torch.load(vanilla_path, weights_only=True)
+        model_state_dict = torch.load(vanilla_path, map_location=device, weights_only=True)
         model.load_state_dict(model_state_dict)
         model = model.to(device)
     else:
@@ -595,6 +683,7 @@ def run_experiment(args):
     print(f"Calculate the Influence of {args.element_type}...")
     start_time = time.time()
     table_exports = []
+    use_groupwise_summary = str(getattr(args, "metric_mode", "global")).lower() == "groupwise"
     if args.element_type == "edge_edit":
         removal_influence_results = calculate_grouped_influence(
             model=model,
@@ -623,12 +712,14 @@ def run_experiment(args):
         i_cluster_fixed = insertion_influence_results["clusterwise_fixed_theta"]
         r_cluster_step = removal_influence_results["clusterwise_step_by_step"]
         i_cluster_step = insertion_influence_results["clusterwise_step_by_step"]
-        r_total_inf = r_calculate["total_inf"]
-        r_parameter_shift_inf = r_calculate["retrain_inf"]
-        r_message_propagation_inf = r_calculate["perturb_inf"]
-        i_total_inf = i_calculate["total_inf"]
-        i_parameter_shift_inf = i_calculate["retrain_inf"]
-        i_message_propagation_inf = i_calculate["perturb_inf"]
+        r_summary = r_cluster_fixed if use_groupwise_summary and r_cluster_fixed is not None else r_calculate
+        i_summary = i_cluster_fixed if use_groupwise_summary and i_cluster_fixed is not None else i_calculate
+        r_total_inf = r_summary["total_inf"]
+        r_parameter_shift_inf = r_summary["retrain_inf"]
+        r_message_propagation_inf = r_summary["perturb_inf"]
+        i_total_inf = i_summary["total_inf"]
+        i_parameter_shift_inf = i_summary["retrain_inf"]
+        i_message_propagation_inf = i_summary["perturb_inf"]
 
         total_inf = torch.cat((r_total_inf, i_total_inf), dim=0)
         parameter_shift_inf = torch.cat((r_parameter_shift_inf, i_parameter_shift_inf), dim=0)
@@ -659,9 +750,10 @@ def run_experiment(args):
         calculate_inf = influence_results["calculate_influence"]
         cluster_fixed = influence_results["clusterwise_fixed_theta"]
         cluster_step = influence_results["clusterwise_step_by_step"]
-        total_inf = calculate_inf["total_inf"]
-        parameter_shift_inf = calculate_inf["retrain_inf"]
-        message_propagation_inf = calculate_inf["perturb_inf"]
+        summary_result = cluster_fixed if use_groupwise_summary and cluster_fixed is not None else calculate_inf
+        total_inf = summary_result["total_inf"]
+        parameter_shift_inf = summary_result["retrain_inf"]
+        message_propagation_inf = summary_result["perturb_inf"]
         table_exports = [
             {
                 "file_stem": "candidate_results",

@@ -14,6 +14,8 @@ from src.graph_utils import *
 from src.utils import *
 import argparse
 
+from groupwise_metric.proxies import generate_probe_vectors, normalize_proxy_matrix
+
 
 def _candidate_edge_checkpoint_name(candidate_edge):
     edge_tensor = candidate_edge.detach().cpu().to(torch.long)
@@ -54,6 +56,44 @@ def _ensure_optional_experiment_defaults(args):
         args.cluster_candidate_force_rebuild = 0
     if not hasattr(args, "cluster_candidate_cache_root"):
         args.cluster_candidate_cache_root = "candidate_cache"
+    if not hasattr(args, "metric_mode"):
+        args.metric_mode = "global"
+    if not hasattr(args, "groupwise_num_groups_init"):
+        args.groupwise_num_groups_init = None
+    if not hasattr(args, "groupwise_alpha_repr"):
+        args.groupwise_alpha_repr = 1.0
+    if not hasattr(args, "groupwise_beta_proxy"):
+        args.groupwise_beta_proxy = 1.0
+    if not hasattr(args, "groupwise_probe_dim"):
+        args.groupwise_probe_dim = 8
+    if not hasattr(args, "groupwise_probe_seed"):
+        args.groupwise_probe_seed = 0
+    if not hasattr(args, "groupwise_normalize_proxies"):
+        args.groupwise_normalize_proxies = 1
+    if not hasattr(args, "groupwise_damping"):
+        args.groupwise_damping = 1e-3
+    if not hasattr(args, "groupwise_split_threshold"):
+        args.groupwise_split_threshold = 1e-6
+    if not hasattr(args, "groupwise_merge_threshold"):
+        args.groupwise_merge_threshold = 1e-6
+    if not hasattr(args, "groupwise_move_threshold"):
+        args.groupwise_move_threshold = 1e-6
+    if not hasattr(args, "groupwise_radius_update_rho"):
+        args.groupwise_radius_update_rho = 1.0
+    if not hasattr(args, "groupwise_max_outer_iters"):
+        args.groupwise_max_outer_iters = 50
+    if not hasattr(args, "groupwise_chain_method"):
+        args.groupwise_chain_method = "nearest_neighbor"
+    if not hasattr(args, "groupwise_metric_energy_mode"):
+        args.groupwise_metric_energy_mode = "scalar_proxy"
+    if not hasattr(args, "groupwise_merge_topk"):
+        args.groupwise_merge_topk = 10
+    if not hasattr(args, "groupwise_max_reassign_candidates_per_group"):
+        args.groupwise_max_reassign_candidates_per_group = 5
+    if not hasattr(args, "groupwise_reassign_target_topk"):
+        args.groupwise_reassign_target_topk = 2
+    if not hasattr(args, "groupwise_min_group_size"):
+        args.groupwise_min_group_size = 2
 
     args.num_of_clusters = int(args.num_of_clusters)
     args.edges_per_cluster = int(args.edges_per_cluster)
@@ -144,6 +184,9 @@ class GraphInfluenceModule:
         self.eval_metric = eval_metric
         self.num_folds = num_folds
         self.metric_fn = metric_fn
+        self.node_output_representations = None
+        self.curvature_probe_cache = {}
+        self.edge_curvature_proxy_cache = {}
 
         self.eval_node_idxs = eval_node_idxs
         self.exact_k_hop_neighbors = self._load_exact_k_hop_neighbors()
@@ -180,17 +223,8 @@ class GraphInfluenceModule:
             perturbed_logit = self.get_perturbed_logit(self.model, self.graph, removed_edge=targets)
         elif influence_type == 'edge_insertion':
             perturbed_logit = self.get_perturbed_logit(self.model, self.graph, added_edge=targets)
-        
-        influenced_nodes = []
-        for target in targets:
-            inf_nodes = torch.unique(torch.cat([self.nodes_within_km1_hop[target[0].item()], self.nodes_within_km1_hop[target[1].item()]])).to(torch.long)
-            influenced_nodes.append(inf_nodes)
-        influenced_nodes = torch.unique(torch.cat(influenced_nodes, dim=-1))
-        
-        influenced_mask = torch.zeros_like(self.graph.train_mask)
-        influenced_mask[influenced_nodes] = 1
-        train_influenced_mask = torch.logical_and(influenced_mask, self.graph.train_mask)
-        train_influenced_nodes = train_influenced_mask.nonzero().squeeze(1)
+
+        train_influenced_nodes = self.get_train_influenced_nodes(targets)
         
         if train_influenced_nodes.numel() == 0:
             return [0 for i in range(self.num_folds)], 0
@@ -243,6 +277,150 @@ class GraphInfluenceModule:
             )
 
             return k_fold_edge_influence, train_influenced_nodes.numel()
+
+    @staticmethod
+    def _ensure_2d_edge_tensor(targets, device=None):
+        if not torch.is_tensor(targets):
+            targets = torch.tensor(targets, dtype=torch.long, device=device)
+        if device is not None:
+            targets = targets.to(device=device)
+        targets = targets.to(dtype=torch.long)
+        if targets.dim() == 1:
+            if targets.numel() != 2:
+                raise ValueError("targets must contain 2 values for a single edge.")
+            targets = targets.view(1, 2)
+        if targets.dim() != 2 or targets.shape[1] != 2:
+            raise ValueError("targets must have shape [2] or [num_edges, 2].")
+        return targets
+
+    @staticmethod
+    def _canonical_edge_key(edge):
+        if torch.is_tensor(edge):
+            u, v = [int(x) for x in edge.detach().cpu().reshape(-1).tolist()]
+        else:
+            u, v = [int(x) for x in edge]
+        return (u, v) if u <= v else (v, u)
+
+    def get_train_influenced_nodes(self, targets):
+        targets = self._ensure_2d_edge_tensor(targets, device=self.graph.edge_index.device)
+        self.get_nodes_within_km1_hop()
+
+        influenced_nodes = []
+        for target in targets:
+            inf_nodes = torch.unique(
+                torch.cat(
+                    [
+                        self.nodes_within_km1_hop[target[0].item()],
+                        self.nodes_within_km1_hop[target[1].item()],
+                    ]
+                )
+            ).to(torch.long)
+            influenced_nodes.append(inf_nodes)
+
+        if len(influenced_nodes) == 0:
+            return torch.empty(0, dtype=torch.long, device=self.graph.train_mask.device)
+
+        influenced_nodes = torch.unique(torch.cat(influenced_nodes, dim=-1))
+        influenced_mask = torch.zeros_like(self.graph.train_mask, dtype=torch.bool)
+        influenced_mask[influenced_nodes] = True
+        train_influenced_mask = torch.logical_and(influenced_mask, self.graph.train_mask)
+        return train_influenced_mask.nonzero().squeeze(1)
+
+    def build_local_train_graph(self, targets):
+        targets = self._ensure_2d_edge_tensor(targets, device=self.graph.edge_index.device)
+        train_influenced_nodes = self.get_train_influenced_nodes(targets)
+        local_graph = self.graph.clone()
+        local_train_mask = torch.zeros_like(self.graph.train_mask, dtype=torch.bool)
+        if train_influenced_nodes.numel() > 0:
+            local_train_mask[train_influenced_nodes] = True
+        local_graph.train_mask = local_train_mask
+        return local_graph, train_influenced_nodes
+
+    def get_node_output_representations(self):
+        if self.node_output_representations is None:
+            self.model.eval()
+            with torch.no_grad():
+                self.node_output_representations = self.model(self.graph).detach()
+        return self.node_output_representations
+
+    def get_edge_representations(self, targets):
+        targets = self._ensure_2d_edge_tensor(targets, device=self.graph.edge_index.device)
+        node_repr = self.get_node_output_representations()
+        src = targets[:, 0]
+        dst = targets[:, 1]
+        mean_repr = 0.5 * (node_repr[src] + node_repr[dst])
+        diff_repr = torch.abs(node_repr[src] - node_repr[dst])
+        return torch.cat([mean_repr, diff_repr], dim=1).detach()
+
+    def get_curvature_probe_vectors(self, probe_dim=None, probe_seed=None):
+        if probe_dim is None:
+            probe_dim = int(getattr(self.args, "groupwise_probe_dim", 8))
+        if probe_seed is None:
+            probe_seed = int(getattr(self.args, "groupwise_probe_seed", 0))
+
+        params = [p for p in self.model.parameters() if p.requires_grad]
+        if len(params) == 0:
+            raise ValueError("Model has no trainable parameters.")
+        flat_dim = int(sum(p.numel() for p in params))
+        dtype = params[0].dtype
+        cache_key = (int(probe_dim), int(probe_seed), flat_dim, str(self.device), str(dtype))
+        if cache_key not in self.curvature_probe_cache:
+            self.curvature_probe_cache[cache_key] = generate_probe_vectors(
+                dim=flat_dim,
+                probe_dim=int(probe_dim),
+                seed=int(probe_seed),
+                device=self.device,
+                dtype=dtype,
+                normalize=True,
+            )
+        return self.curvature_probe_cache[cache_key]
+
+    def compute_edge_curvature_proxies(self, targets, probe_vecs=None, normalize=True):
+        targets = self._ensure_2d_edge_tensor(targets, device=self.graph.edge_index.device)
+        if probe_vecs is None:
+            probe_vecs = self.get_curvature_probe_vectors()
+        probe_vecs = probe_vecs.to(device=self.device)
+
+        target_keys = [self._canonical_edge_key(edge) for edge in targets]
+        missing = []
+        missing_keys = []
+        for edge, key in zip(targets, target_keys):
+            if key not in self.edge_curvature_proxy_cache:
+                missing.append(edge.detach().clone())
+                missing_keys.append(key)
+
+        if len(missing) > 0:
+            module = self._create_lissa_module()
+            params = module._model_make_functional()
+            flat_params = module._flatten_params_like(params)
+
+            try:
+                for edge, key in zip(missing, missing_keys):
+                    local_graph, train_influenced_nodes = self.build_local_train_graph(edge)
+                    if train_influenced_nodes.numel() == 0:
+                        proxy = torch.zeros(probe_vecs.shape[0], device=self.device, dtype=probe_vecs.dtype)
+                    else:
+                        responses = []
+                        for probe in probe_vecs:
+                            module.vjp_func = None
+                            hvp = module._hvp_graph(local_graph, flat_params, vec=probe, gnh=module.gnh)
+                            scalar = torch.dot(probe, hvp).detach()
+                            if not torch.isfinite(scalar):
+                                scalar = torch.zeros((), device=probe.device, dtype=probe.dtype)
+                            responses.append(scalar)
+                        proxy = torch.stack(responses, dim=0)
+                    self.edge_curvature_proxy_cache[key] = proxy.detach().cpu()
+            finally:
+                with torch.no_grad():
+                    module._model_reinsert_params(module._reshape_like_params(flat_params), register=True)
+
+        proxy_matrix = torch.stack(
+            [self.edge_curvature_proxy_cache[key].to(device=self.device, dtype=probe_vecs.dtype) for key in target_keys],
+            dim=0,
+        )
+        if normalize:
+            proxy_matrix = normalize_proxy_matrix(proxy_matrix)
+        return proxy_matrix.detach()
     
     def get_message_passing_influence(self, targets, influence_type):
         """
@@ -533,7 +711,7 @@ def calculate_loo(model, graph, candidate_edges, args, seed, model_save_dir, met
         
         edge_perturb_model_path = osp.join(model_save_dir, _candidate_edge_checkpoint_name(candidate_edge))
         if osp.isfile(edge_perturb_model_path):
-            edge_perturb_state_dict = torch.load(edge_perturb_model_path, weights_only=True)
+            edge_perturb_state_dict = torch.load(edge_perturb_model_path, map_location=device, weights_only=True)
             new_model.load_state_dict(edge_perturb_state_dict)
             new_model = new_model.to(device)
         else:
@@ -629,7 +807,7 @@ def calculate_pbrf(model, graph, candidate_edges, args, seed, model_dir, metric_
             
             edge_perturb_model_path = osp.join(model_dir, _candidate_edge_checkpoint_name(candidate_edge))
             if osp.isfile(edge_perturb_model_path):
-                edge_perturb_state_dict = torch.load(edge_perturb_model_path, weights_only=True)
+                edge_perturb_state_dict = torch.load(edge_perturb_model_path, map_location=device, weights_only=True)
                 new_model.load_state_dict(edge_perturb_state_dict)
                 new_model = new_model.to(device)
             else:
@@ -712,6 +890,35 @@ if __name__ == '__main__':
     parser.add_argument("--cluster_candidate_init_only", type=int, default=0)
     parser.add_argument("--cluster_candidate_force_rebuild", type=int, default=0)
     parser.add_argument("--cluster_candidate_cache_root", type=str, default="candidate_cache")
+    parser.add_argument("--metric_mode", type=str, default="global", choices=["global", "groupwise"])
+    parser.add_argument("--groupwise_num_groups_init", type=int, default=None)
+    parser.add_argument("--groupwise_alpha_repr", type=float, default=1.0)
+    parser.add_argument("--groupwise_beta_proxy", type=float, default=1.0)
+    parser.add_argument("--groupwise_probe_dim", type=int, default=8)
+    parser.add_argument("--groupwise_probe_seed", type=int, default=0)
+    parser.add_argument("--groupwise_normalize_proxies", type=int, default=1)
+    parser.add_argument("--groupwise_damping", type=float, default=1e-3)
+    parser.add_argument("--groupwise_split_threshold", type=float, default=1e-6)
+    parser.add_argument("--groupwise_merge_threshold", type=float, default=1e-6)
+    parser.add_argument("--groupwise_move_threshold", type=float, default=1e-6)
+    parser.add_argument("--groupwise_radius_update_rho", type=float, default=1.0)
+    parser.add_argument("--groupwise_max_outer_iters", type=int, default=50)
+    parser.add_argument(
+        "--groupwise_chain_method",
+        type=str,
+        default="nearest_neighbor",
+        choices=["nearest_neighbor", "center_distance"],
+    )
+    parser.add_argument(
+        "--groupwise_metric_energy_mode",
+        type=str,
+        default="scalar_proxy",
+        choices=["scalar_proxy"],
+    )
+    parser.add_argument("--groupwise_merge_topk", type=int, default=10)
+    parser.add_argument("--groupwise_max_reassign_candidates_per_group", type=int, default=5)
+    parser.add_argument("--groupwise_reassign_target_topk", type=int, default=2)
+    parser.add_argument("--groupwise_min_group_size", type=int, default=2)
 
     args = parser.parse_args()
     args.linear = bool(args.linear)
@@ -798,7 +1005,7 @@ if __name__ == '__main__':
                 num_heads=args.num_heads
             )
     if osp.isfile(vanilla_path):
-        model_state_dict = torch.load(vanilla_path, weights_only=True)
+        model_state_dict = torch.load(vanilla_path, map_location=device, weights_only=True)
         model.load_state_dict(model_state_dict)
         model = model.to(device)
     else:

@@ -1579,6 +1579,12 @@ def _normalize_influence_mode(mode):
     return mode
 
 
+def _normalize_metric_mode(mode):
+    if mode is None:
+        return "global"
+    return str(mode).strip().lower()
+
+
 def calculate_influence(influence_module, candidates, influence_type):
     total_inf, retrain_inf, perturb_inf, module_scale, inv_hvp_norm, num_ins = influence_module.calculate_influence(
         candidates, influence_type
@@ -1862,37 +1868,64 @@ def calculate_grouped_influence(
     influence_module_cls,
 ):
     influence_module = influence_module_cls(model, graph, args, args.eval_metric, 1, eval_node_idxs, metric_fn)
+    metric_mode = _normalize_metric_mode(getattr(args, "metric_mode", "global"))
+
+    original_clusterer = getattr(args, "candidate_clusterer_fn", None)
+    partition_search_result = None
+    if metric_mode == "groupwise" and influence_type == "edge_removal":
+        from groupwise_metric import prepare_groupwise_candidate_clusterer
+
+        groupwise_clusterer, partition_search_result = prepare_groupwise_candidate_clusterer(
+            candidates=candidates,
+            influence_module=influence_module,
+            args=args,
+            influence_type=influence_type,
+        )
+        args.candidate_clusterer_fn = groupwise_clusterer
+    elif metric_mode == "groupwise":
+        print(
+            f"[groupwise-metric] Skip metric_mode=groupwise for influence_type={influence_type}; "
+            "fall back to global partitioning."
+        )
+
     basic_calculate_influence_result = calculate_influence(influence_module, candidates, influence_type)
 
     mode = _normalize_influence_mode(getattr(args, "influence_calculation_mode", "both"))
-    if mode in ["calculate_influence", "both", "clusterwise_step_by_step"]:
-        clusterwise_fixed_theta_result = calculate_clusterwise_fixed_theta_influence(
-            influence_module=influence_module,
-            candidates=candidates,
-            args=args,
-            influence_type=influence_type,
-        )
-    else:
-        clusterwise_fixed_theta_result = None
+    try:
+        if mode in ["calculate_influence", "both", "clusterwise_step_by_step"]:
+            clusterwise_fixed_theta_result = calculate_clusterwise_fixed_theta_influence(
+                influence_module=influence_module,
+                candidates=candidates,
+                args=args,
+                influence_type=influence_type,
+            )
+        else:
+            clusterwise_fixed_theta_result = None
 
-    if mode in ["clusterwise_step_by_step", "both"]:
-        step_by_step_result = calculate_clusterwise_step_by_step_influence(
-            model=model,
-            graph=graph,
-            args=args,
-            eval_node_idxs=eval_node_idxs,
-            metric_fn=metric_fn,
-            candidates=candidates,
-            influence_type=influence_type,
-            influence_module_cls=influence_module_cls,
-        )
-    else:
-        step_by_step_result = None
+        if mode in ["clusterwise_step_by_step", "both"]:
+            step_by_step_result = calculate_clusterwise_step_by_step_influence(
+                model=model,
+                graph=graph,
+                args=args,
+                eval_node_idxs=eval_node_idxs,
+                metric_fn=metric_fn,
+                candidates=candidates,
+                influence_type=influence_type,
+                influence_module_cls=influence_module_cls,
+            )
+        else:
+            step_by_step_result = None
+    finally:
+        if original_clusterer is None and hasattr(args, "candidate_clusterer_fn"):
+            delattr(args, "candidate_clusterer_fn")
+        else:
+            args.candidate_clusterer_fn = original_clusterer
 
     return {
         "calculate_influence": basic_calculate_influence_result,
         "clusterwise_fixed_theta": clusterwise_fixed_theta_result,
         "clusterwise_step_by_step": step_by_step_result,
+        "partition_search": partition_search_result,
     }
 
 
@@ -1938,6 +1971,14 @@ def _edge_group_to_string(edge_group):
     return ";".join(f"{int(edge[0])}-{int(edge[1])}" for edge in edge_tensor.tolist())
 
 
+def _edge_group_list_to_string(edge_groups):
+    if edge_groups is None:
+        return None
+    if not isinstance(edge_groups, (list, tuple)):
+        return str(edge_groups)
+    return "|".join(_edge_group_to_string(edge_group) for edge_group in edge_groups)
+
+
 def _ordering_to_label(ordering):
     if torch.is_tensor(ordering):
         values = [int(v) for v in ordering.detach().cpu().reshape(-1).tolist()]
@@ -1961,8 +2002,21 @@ def save_candidate_result_tables(
     calculate_result = influence_results.get("calculate_influence", None)
     cluster_fixed_result = influence_results.get("clusterwise_fixed_theta", None)
     cluster_step_result = influence_results.get("clusterwise_step_by_step", None)
+    partition_result = influence_results.get("partition_search", None)
 
     num_candidates = int(candidates.shape[0])
+    partition_values_by_candidate = {}
+    if partition_result is not None:
+        for candidate_entry in partition_result.get("candidate_partitions", []):
+            candidate_idx = int(candidate_entry.get("candidate_idx", -1))
+            partition_values_by_candidate[candidate_idx] = {
+                "groupwise_num_groups": int(candidate_entry.get("num_groups", 0)),
+                "groupwise_objective_final": candidate_entry.get("objective_final", None),
+                "groupwise_objective_global": candidate_entry.get("objective_global", None),
+                "groupwise_objective_ratio": candidate_entry.get("objective_ratio_to_global", None),
+                "groupwise_start_label": candidate_entry.get("start_label", None),
+                "groupwise_clusters": _edge_group_list_to_string(candidate_entry.get("clusters", [])),
+            }
 
     step_perm_values_by_candidate = {}
     all_step_perm_labels = []
@@ -1997,6 +2051,12 @@ def save_candidate_result_tables(
         "clusterwise_step_by_step_mean_parameter_shift",
         "clusterwise_step_by_step_mean_message_propagation",
         "clusterwise_step_by_step_num_permutations",
+        "groupwise_num_groups",
+        "groupwise_objective_final",
+        "groupwise_objective_global",
+        "groupwise_objective_ratio",
+        "groupwise_start_label",
+        "groupwise_clusters",
         "pbrf_total",
         "pbrf_parameter_shift",
         "pbrf_message_propagation",
@@ -2045,6 +2105,14 @@ def save_candidate_result_tables(
                 "pbrf_message_propagation": _safe_mean(message_propagation_pbrf[candidate_idx]) if message_propagation_pbrf is not None else None,
                 "leave_k_out": _safe_mean(loo[candidate_idx]) if loo is not None else None,
             }
+
+            partition_values = partition_values_by_candidate.get(candidate_idx, {})
+            row["groupwise_num_groups"] = partition_values.get("groupwise_num_groups", None)
+            row["groupwise_objective_final"] = partition_values.get("groupwise_objective_final", None)
+            row["groupwise_objective_global"] = partition_values.get("groupwise_objective_global", None)
+            row["groupwise_objective_ratio"] = partition_values.get("groupwise_objective_ratio", None)
+            row["groupwise_start_label"] = partition_values.get("groupwise_start_label", None)
+            row["groupwise_clusters"] = partition_values.get("groupwise_clusters", None)
 
             candidate_perm_values = step_perm_values_by_candidate.get(candidate_idx, {})
             if len(candidate_perm_values) > 0:
