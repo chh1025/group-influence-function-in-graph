@@ -14,7 +14,9 @@
 /results
 /conf
 /multirun
-/experiments
+/experiments/*
+!/experiments/group_influence/
+!/experiments/group_influence/**
 /outputs
 /tmp*
 /archive
@@ -23,7 +25,8 @@ candidate_cache
 multirun*
 
 # Experiment artifacts
-codex_log/
+codex_log/*
+!codex_log/20260505_group_influence_mvp.md
 CoCo/.git/
 CoCo/.vscode/
 CoCo/__pycache__/
