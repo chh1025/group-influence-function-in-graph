@@ -1,0 +1,130 @@
+% Expanded METIS K-sweep tables.
+% Source:
+% results/partition_compare_summary_metis_k_sweep_high_ratio_gcn_gat4_20260422_131508.csv
+% Rows: K
+% Columns: (ratio x dataset x model), with layer fixed to 4.
+
+\begin{table*}[t]
+\centering
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.12}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{c|cccc|cccc||cccc|cccc||cccc|cccc}
+\toprule
+& \multicolumn{8}{c||}{\textbf{Ratio 30}} & \multicolumn{8}{c||}{\textbf{Ratio 50}} & \multicolumn{8}{c}{\textbf{Ratio 80}} \\
+& \multicolumn{4}{c|}{\textbf{Homophilic}} & \multicolumn{4}{c||}{\textbf{Heterophilic}} & \multicolumn{4}{c|}{\textbf{Homophilic}} & \multicolumn{4}{c||}{\textbf{Heterophilic}} & \multicolumn{4}{c|}{\textbf{Homophilic}} & \multicolumn{4}{c}{\textbf{Heterophilic}} \\
+& \multicolumn{2}{c}{Cora} & \multicolumn{2}{c|}{CiteSeer} & \multicolumn{2}{c}{Texas} & \multicolumn{2}{c||}{Cornell} & \multicolumn{2}{c}{Cora} & \multicolumn{2}{c|}{CiteSeer} & \multicolumn{2}{c}{Texas} & \multicolumn{2}{c||}{Cornell} & \multicolumn{2}{c}{Cora} & \multicolumn{2}{c|}{CiteSeer} & \multicolumn{2}{c}{Texas} & \multicolumn{2}{c}{Cornell} \\
+& GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT \\
+\midrule
+1 & 0.62 & \textbf{0.91} & 0.67 & 0.51 & 0.36 & \textbf{0.33} & 0.23 & \textbf{0.07} & 0.54 & \textbf{0.90} & 0.47 & 0.53 & 0.24 & \textbf{0.18} & 0.44 & 0.17 & 0.46 & \textbf{0.61} & 0.17 & 0.55 & 0.02 & \textbf{0.27} & 0.21 & \textbf{0.39} \\
+2 & 0.57 & 0.90 & \textbf{0.68} & 0.50 & \textbf{0.37} & 0.23 & 0.27 & 0.04 & \textbf{0.58} & 0.87 & 0.45 & 0.55 & 0.26 & 0.10 & \textbf{0.48} & 0.23 & 0.41 & 0.61 & \textbf{0.18} & 0.57 & \textbf{0.06} & 0.22 & 0.17 & 0.34 \\
+3 & 0.56 & 0.86 & 0.67 & \textbf{0.52} & 0.30 & 0.30 & 0.29 & -0.03 & 0.55 & 0.86 & 0.43 & 0.54 & 0.21 & 0.17 & 0.45 & \textbf{0.25} & \textbf{0.56} & 0.53 & 0.16 & \textbf{0.57} & 0.04 & 0.12 & 0.27 & 0.33 \\
+4 & 0.56 & 0.90 & 0.66 & 0.48 & 0.31 & 0.27 & 0.24 & 0.00 & 0.57 & 0.82 & \textbf{0.48} & 0.50 & 0.22 & 0.05 & 0.46 & 0.19 & 0.44 & 0.60 & 0.16 & 0.54 & -0.03 & 0.04 & 0.21 & 0.13 \\
+6 & \textbf{0.63} & 0.88 & 0.66 & 0.51 & 0.32 & 0.32 & 0.31 & 0.05 & 0.54 & 0.86 & 0.43 & \textbf{0.55} & \textbf{0.28} & 0.00 & 0.37 & 0.16 & 0.38 & 0.57 & 0.15 & 0.56 & -0.09 & 0.12 & 0.27 & 0.10 \\
+8 & 0.54 & 0.88 & 0.67 & 0.48 & 0.37 & 0.30 & \textbf{0.35} & 0.05 & 0.56 & 0.84 & 0.43 & 0.50 & 0.21 & -0.03 & 0.41 & 0.19 & 0.32 & 0.61 & 0.05 & 0.44 & -0.01 & 0.15 & \textbf{0.36} & 0.04 \\
+\bottomrule
+\end{tabular}%
+}
+\caption{METIS K-sweep Spearman correlation across ratios. Best $K$ per column is bolded; higher is better.}
+\label{tab:metis_k_sweep_big_spearman}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.12}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{c|cccc|cccc||cccc|cccc||cccc|cccc}
+\toprule
+& \multicolumn{8}{c||}{\textbf{Ratio 30}} & \multicolumn{8}{c||}{\textbf{Ratio 50}} & \multicolumn{8}{c}{\textbf{Ratio 80}} \\
+& \multicolumn{4}{c|}{\textbf{Homophilic}} & \multicolumn{4}{c||}{\textbf{Heterophilic}} & \multicolumn{4}{c|}{\textbf{Homophilic}} & \multicolumn{4}{c||}{\textbf{Heterophilic}} & \multicolumn{4}{c|}{\textbf{Homophilic}} & \multicolumn{4}{c}{\textbf{Heterophilic}} \\
+& \multicolumn{2}{c}{Cora} & \multicolumn{2}{c|}{CiteSeer} & \multicolumn{2}{c}{Texas} & \multicolumn{2}{c||}{Cornell} & \multicolumn{2}{c}{Cora} & \multicolumn{2}{c|}{CiteSeer} & \multicolumn{2}{c}{Texas} & \multicolumn{2}{c||}{Cornell} & \multicolumn{2}{c}{Cora} & \multicolumn{2}{c|}{CiteSeer} & \multicolumn{2}{c}{Texas} & \multicolumn{2}{c}{Cornell} \\
+& GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT \\
+\midrule
+1 & \textbf{0.61} & 0.92 & 0.70 & 0.52 & 0.34 & 0.24 & 0.34 & \textbf{-0.16} & 0.53 & \textbf{0.90} & 0.52 & 0.52 & 0.28 & 0.10 & 0.46 & 0.03 & 0.52 & 0.62 & 0.14 & 0.53 & 0.04 & 0.00 & 0.20 & \textbf{0.42} \\
+2 & 0.59 & 0.92 & \textbf{0.71} & 0.52 & \textbf{0.35} & 0.25 & 0.36 & -0.26 & \textbf{0.56} & 0.86 & 0.51 & 0.54 & \textbf{0.28} & \textbf{0.15} & 0.48 & 0.04 & 0.45 & 0.61 & \textbf{0.15} & 0.53 & \textbf{0.06} & 0.04 & 0.18 & 0.32 \\
+3 & 0.59 & 0.90 & 0.69 & \textbf{0.53} & 0.31 & 0.27 & 0.37 & -0.22 & 0.52 & 0.83 & 0.47 & 0.55 & 0.22 & 0.09 & \textbf{0.48} & 0.16 & \textbf{0.63} & 0.56 & 0.13 & \textbf{0.54} & 0.05 & -0.27 & 0.28 & 0.39 \\
+4 & 0.59 & \textbf{0.92} & 0.69 & 0.49 & 0.30 & 0.29 & 0.31 & -0.29 & 0.55 & 0.83 & \textbf{0.53} & 0.51 & 0.24 & -0.04 & 0.47 & 0.11 & 0.48 & 0.61 & 0.14 & 0.52 & -0.01 & 0.03 & 0.21 & 0.23 \\
+6 & 0.61 & 0.90 & 0.68 & 0.51 & 0.31 & \textbf{0.34} & 0.37 & -0.21 & 0.52 & 0.80 & 0.44 & \textbf{0.57} & 0.26 & -0.05 & 0.42 & 0.03 & 0.46 & 0.58 & 0.14 & 0.50 & -0.07 & -0.02 & 0.26 & 0.17 \\
+8 & 0.56 & 0.91 & 0.68 & 0.50 & 0.34 & 0.31 & \textbf{0.38} & -0.22 & 0.56 & 0.79 & 0.48 & 0.51 & 0.20 & -0.11 & 0.44 & \textbf{0.17} & 0.42 & \textbf{0.64} & 0.02 & 0.42 & 0.06 & \textbf{0.09} & \textbf{0.35} & 0.04 \\
+\bottomrule
+\end{tabular}%
+}
+\caption{METIS K-sweep Pearson correlation across ratios. Best $K$ per column is bolded; higher is better.}
+\label{tab:metis_k_sweep_big_pearson}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.12}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{c|cccc|cccc||cccc|cccc||cccc|cccc}
+\toprule
+& \multicolumn{8}{c||}{\textbf{Ratio 30}} & \multicolumn{8}{c||}{\textbf{Ratio 50}} & \multicolumn{8}{c}{\textbf{Ratio 80}} \\
+& \multicolumn{4}{c|}{\textbf{Homophilic}} & \multicolumn{4}{c||}{\textbf{Heterophilic}} & \multicolumn{4}{c|}{\textbf{Homophilic}} & \multicolumn{4}{c||}{\textbf{Heterophilic}} & \multicolumn{4}{c|}{\textbf{Homophilic}} & \multicolumn{4}{c}{\textbf{Heterophilic}} \\
+& \multicolumn{2}{c}{Cora} & \multicolumn{2}{c|}{CiteSeer} & \multicolumn{2}{c}{Texas} & \multicolumn{2}{c||}{Cornell} & \multicolumn{2}{c}{Cora} & \multicolumn{2}{c|}{CiteSeer} & \multicolumn{2}{c}{Texas} & \multicolumn{2}{c||}{Cornell} & \multicolumn{2}{c}{Cora} & \multicolumn{2}{c|}{CiteSeer} & \multicolumn{2}{c}{Texas} & \multicolumn{2}{c}{Cornell} \\
+& GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT \\
+\midrule
+1 & \textbf{0.03} & \textbf{0.01} & 0.01 & 0.11 & \textbf{0.10} & 1.31 & 0.07 & 1.21 & 0.09 & \textbf{0.01} & 0.04 & 0.22 & 0.16 & 20.79 & 0.11 & 5.77 & 0.41 & \textbf{0.03} & 0.24 & 0.45 & 0.19 & 66.70 & 0.33 & 2.20 \\
+2 & 0.03 & 0.01 & \textbf{0.01} & 0.11 & 0.10 & 1.27 & 0.07 & 1.19 & 0.09 & 0.02 & 0.04 & 0.22 & 0.16 & 20.70 & 0.11 & 5.75 & 0.41 & 0.04 & 0.24 & 0.45 & 0.21 & 66.59 & 0.34 & \textbf{2.16} \\
+3 & 0.03 & 0.01 & 0.01 & 0.11 & 0.10 & 1.25 & 0.07 & 1.17 & 0.09 & 0.02 & 0.04 & 0.22 & 0.16 & 20.59 & 0.11 & 5.76 & 0.41 & 0.05 & 0.24 & 0.45 & \textbf{0.16} & 66.32 & \textbf{0.30} & 2.46 \\
+4 & 0.03 & 0.01 & 0.01 & \textbf{0.11} & 0.10 & 1.25 & 0.07 & 1.15 & \textbf{0.09} & 0.02 & 0.04 & 0.21 & 0.16 & 20.64 & 0.11 & 5.71 & \textbf{0.40} & 0.04 & 0.24 & 0.44 & 0.21 & 66.41 & 0.32 & 2.26 \\
+6 & 0.03 & 0.01 & 0.01 & 0.11 & 0.10 & 1.24 & \textbf{0.06} & 1.10 & 0.09 & 0.03 & 0.04 & 0.22 & \textbf{0.16} & 20.57 & 0.11 & 5.69 & 0.42 & 0.07 & 0.24 & 0.44 & 0.17 & 66.31 & 0.31 & 2.24 \\
+8 & 0.03 & 0.01 & 0.01 & 0.11 & 0.10 & \textbf{1.23} & 0.07 & \textbf{1.08} & 0.09 & 0.02 & \textbf{0.03} & \textbf{0.21} & 0.16 & \textbf{20.55} & \textbf{0.10} & \textbf{5.64} & 0.41 & 0.06 & \textbf{0.24} & \textbf{0.44} & 0.18 & \textbf{66.28} & 0.32 & 2.16 \\
+\bottomrule
+\end{tabular}%
+}
+\caption{METIS K-sweep MAE across ratios. Best $K$ per column is bolded; lower is better.}
+\label{tab:metis_k_sweep_big_mae}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.12}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{c|cccc|cccc||cccc|cccc||cccc|cccc}
+\toprule
+& \multicolumn{8}{c||}{\textbf{Ratio 30}} & \multicolumn{8}{c||}{\textbf{Ratio 50}} & \multicolumn{8}{c}{\textbf{Ratio 80}} \\
+& \multicolumn{4}{c|}{\textbf{Homophilic}} & \multicolumn{4}{c||}{\textbf{Heterophilic}} & \multicolumn{4}{c|}{\textbf{Homophilic}} & \multicolumn{4}{c||}{\textbf{Heterophilic}} & \multicolumn{4}{c|}{\textbf{Homophilic}} & \multicolumn{4}{c}{\textbf{Heterophilic}} \\
+& \multicolumn{2}{c}{Cora} & \multicolumn{2}{c|}{CiteSeer} & \multicolumn{2}{c}{Texas} & \multicolumn{2}{c||}{Cornell} & \multicolumn{2}{c}{Cora} & \multicolumn{2}{c|}{CiteSeer} & \multicolumn{2}{c}{Texas} & \multicolumn{2}{c||}{Cornell} & \multicolumn{2}{c}{Cora} & \multicolumn{2}{c|}{CiteSeer} & \multicolumn{2}{c}{Texas} & \multicolumn{2}{c}{Cornell} \\
+& GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT \\
+\midrule
+1 & 0.78 & 0.98 & \textbf{0.86} & \textbf{0.98} & \textbf{0.52} & 0.96 & 0.44 & 0.42 & 0.88 & \textbf{1.00} & 0.88 & \textbf{1.00} & \textbf{0.52} & \textbf{0.98} & 0.48 & 0.46 & 0.92 & \textbf{1.00} & 0.90 & \textbf{1.00} & \textbf{0.74} & 0.72 & 0.30 & \textbf{0.24} \\
+2 & 0.74 & \textbf{1.00} & 0.84 & \textbf{0.98} & \textbf{0.52} & \textbf{0.98} & 0.44 & 0.46 & 0.86 & \textbf{1.00} & 0.88 & \textbf{1.00} & 0.50 & 0.96 & 0.46 & 0.43 & 0.94 & \textbf{1.00} & 0.92 & \textbf{1.00} & \textbf{0.74} & 0.86 & 0.26 & 0.21 \\
+3 & 0.68 & 0.98 & 0.82 & \textbf{0.98} & \textbf{0.52} & \textbf{0.98} & \textbf{0.48} & 0.46 & 0.90 & \textbf{1.00} & 0.88 & \textbf{1.00} & 0.50 & \textbf{0.98} & 0.48 & 0.43 & 0.92 & \textbf{1.00} & 0.92 & \textbf{1.00} & \textbf{0.74} & \textbf{0.97} & \textbf{0.46} & 0.13 \\
+4 & 0.76 & \textbf{1.00} & \textbf{0.86} & \textbf{0.98} & \textbf{0.52} & \textbf{0.98} & 0.44 & 0.54 & \textbf{0.92} & \textbf{1.00} & \textbf{0.90} & \textbf{1.00} & 0.50 & \textbf{0.98} & 0.48 & 0.37 & \textbf{0.96} & \textbf{1.00} & \textbf{0.96} & \textbf{1.00} & \textbf{0.74} & 0.92 & 0.36 & 0.16 \\
+6 & 0.68 & \textbf{1.00} & 0.84 & \textbf{0.98} & \textbf{0.52} & \textbf{0.98} & 0.44 & 0.60 & 0.82 & \textbf{1.00} & \textbf{0.90} & \textbf{1.00} & 0.50 & \textbf{0.98} & \textbf{0.50} & 0.54 & 0.94 & \textbf{1.00} & 0.92 & \textbf{1.00} & \textbf{0.74} & \textbf{0.97} & 0.36 & 0.13 \\
+8 & \textbf{0.80} & \textbf{1.00} & 0.84 & \textbf{0.98} & \textbf{0.52} & \textbf{0.98} & \textbf{0.48} & \textbf{0.70} & 0.88 & \textbf{1.00} & 0.88 & \textbf{1.00} & 0.50 & \textbf{0.98} & 0.48 & \textbf{0.59} & 0.94 & \textbf{1.00} & \textbf{0.96} & \textbf{1.00} & \textbf{0.74} & \textbf{0.97} & 0.38 & 0.18 \\
+\bottomrule
+\end{tabular}%
+}
+\caption{METIS K-sweep sign accuracy across ratios. Best $K$ per column is bolded; higher is better.}
+\label{tab:metis_k_sweep_big_signacc}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.12}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{c|cccc|cccc||cccc|cccc||cccc|cccc}
+\toprule
+& \multicolumn{8}{c||}{\textbf{Ratio 30}} & \multicolumn{8}{c||}{\textbf{Ratio 50}} & \multicolumn{8}{c}{\textbf{Ratio 80}} \\
+& \multicolumn{4}{c|}{\textbf{Homophilic}} & \multicolumn{4}{c||}{\textbf{Heterophilic}} & \multicolumn{4}{c|}{\textbf{Homophilic}} & \multicolumn{4}{c||}{\textbf{Heterophilic}} & \multicolumn{4}{c|}{\textbf{Homophilic}} & \multicolumn{4}{c}{\textbf{Heterophilic}} \\
+& \multicolumn{2}{c}{Cora} & \multicolumn{2}{c|}{CiteSeer} & \multicolumn{2}{c}{Texas} & \multicolumn{2}{c||}{Cornell} & \multicolumn{2}{c}{Cora} & \multicolumn{2}{c|}{CiteSeer} & \multicolumn{2}{c}{Texas} & \multicolumn{2}{c||}{Cornell} & \multicolumn{2}{c}{Cora} & \multicolumn{2}{c|}{CiteSeer} & \multicolumn{2}{c}{Texas} & \multicolumn{2}{c}{Cornell} \\
+& GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT & GCN & GAT \\
+\midrule
+1 & 0.92 & 0.29 & 1.55 & 0.80 & 6.73 & 0.73 & 6.09 & 1.35 & 0.80 & \textbf{0.16} & 0.69 & 0.81 & 9.17 & 0.84 & 4.83 & 18.92 & 0.93 & \textbf{0.11} & 0.90 & 0.81 & 6.46 & 0.95 & 1.17 & 2.58 \\
+2 & 0.95 & 0.29 & 1.52 & 0.80 & 6.94 & 0.72 & 6.16 & 1.16 & 0.81 & 0.20 & 0.69 & 0.82 & 9.05 & 0.75 & 3.81 & 13.77 & 0.93 & 0.13 & 0.90 & 0.81 & 6.48 & \textbf{0.88} & 1.21 & 2.41 \\
+3 & 1.01 & 0.34 & 1.62 & 0.80 & \textbf{6.23} & 0.74 & 6.56 & 1.13 & 0.81 & 0.25 & 0.67 & 0.82 & 8.07 & 0.69 & 3.45 & 13.14 & 0.92 & 0.17 & 0.90 & 0.81 & \textbf{5.47} & 1.02 & \textbf{1.05} & 3.48 \\
+4 & 0.90 & \textbf{0.28} & 1.51 & \textbf{0.80} & 6.66 & 0.73 & \textbf{6.00} & 1.18 & \textbf{0.78} & 0.21 & 0.67 & 0.80 & \textbf{8.03} & 0.73 & 3.25 & 11.57 & \textbf{0.91} & 0.14 & 0.89 & 0.79 & 6.87 & 0.96 & 1.12 & 2.57 \\
+6 & 1.04 & 0.33 & 1.71 & 0.80 & 6.49 & 0.71 & 6.41 & \textbf{1.12} & 0.85 & 0.29 & 0.68 & 0.81 & 8.17 & \textbf{0.62} & 2.99 & 10.28 & 0.93 & 0.22 & 0.90 & 0.79 & 5.50 & 1.07 & 1.09 & 2.46 \\
+8 & \textbf{0.90} & 0.32 & \textbf{1.48} & 0.80 & 6.63 & \textbf{0.71} & 7.04 & 1.18 & 0.82 & 0.26 & \textbf{0.64} & \textbf{0.80} & 8.06 & 0.71 & \textbf{2.56} & \textbf{9.15} & 0.92 & 0.19 & \textbf{0.89} & \textbf{0.79} & 5.93 & 1.12 & 1.12 & \textbf{1.99} \\
+\bottomrule
+\end{tabular}%
+}
+\caption{METIS K-sweep MAPE across ratios. Best $K$ per column is bolded; lower is better.}
+\label{tab:metis_k_sweep_big_mape}
+\end{table*}

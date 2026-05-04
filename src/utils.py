@@ -1582,7 +1582,10 @@ def _normalize_influence_mode(mode):
 def _normalize_metric_mode(mode):
     if mode is None:
         return "global"
-    return str(mode).strip().lower()
+    normalized = str(mode).strip().lower()
+    if normalized == "candidate_partition":
+        return "partition"
+    return normalized
 
 
 def calculate_influence(influence_module, candidates, influence_type):
@@ -1887,6 +1890,16 @@ def calculate_grouped_influence(
             f"[groupwise-metric] Skip metric_mode=groupwise for influence_type={influence_type}; "
             "fall back to global partitioning."
         )
+    elif metric_mode == "partition":
+        from candidate_partition import prepare_candidate_partition_clusterer
+
+        partition_clusterer, partition_search_result = prepare_candidate_partition_clusterer(
+            candidates=candidates,
+            graph=graph,
+            args=args,
+            influence_type=influence_type,
+        )
+        args.candidate_clusterer_fn = partition_clusterer
 
     basic_calculate_influence_result = calculate_influence(influence_module, candidates, influence_type)
 
@@ -1979,6 +1992,20 @@ def _edge_group_list_to_string(edge_groups):
     return "|".join(_edge_group_to_string(edge_group) for edge_group in edge_groups)
 
 
+def _int_list_to_string(values):
+    if values is None:
+        return None
+    if not isinstance(values, (list, tuple)):
+        return str(values)
+    return ",".join(str(int(v)) for v in values)
+
+
+def _json_to_string(value):
+    if value is None:
+        return None
+    return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+
 def _ordering_to_label(ordering):
     if torch.is_tensor(ordering):
         values = [int(v) for v in ordering.detach().cpu().reshape(-1).tolist()]
@@ -2010,6 +2037,45 @@ def save_candidate_result_tables(
         for candidate_entry in partition_result.get("candidate_partitions", []):
             candidate_idx = int(candidate_entry.get("candidate_idx", -1))
             partition_values_by_candidate[candidate_idx] = {
+                "partition_method": candidate_entry.get("partition_method", partition_result.get("partition_method", None)),
+                "partition_strategy": candidate_entry.get("partition_strategy", partition_result.get("partition_strategy", None)),
+                "partition_num_groups": int(candidate_entry.get("num_groups", 0)),
+                "partition_cluster_sizes": _int_list_to_string(candidate_entry.get("cluster_sizes", [])),
+                "partition_weighted_cut": candidate_entry.get("weighted_cut", None),
+                "partition_runtime_sec": candidate_entry.get("partition_runtime_sec", None),
+                "partition_affinity_num_nodes": candidate_entry.get("affinity_num_nodes", None),
+                "partition_affinity_num_edges": candidate_entry.get("affinity_num_edges", None),
+                "partition_affinity_density": candidate_entry.get("affinity_density", None),
+                "partition_affinity_weight_sum": candidate_entry.get("affinity_weight_sum", None),
+                "partition_metis_cutcount": candidate_entry.get("metis_cutcount", None),
+                "partition_clusters": _edge_group_list_to_string(candidate_entry.get("clusters", [])),
+                "partition_owner_partition_histogram": _json_to_string(candidate_entry.get("owner_partition_histogram", None)),
+                "partition_cross_owner_candidate_edges": candidate_entry.get("cross_partition_candidate_edges", None),
+                "partition_masked_affinity_entries": candidate_entry.get("masked_affinity_entries", None),
+                "partition_auto_k_method": candidate_entry.get("auto_k_method", None),
+                "partition_auto_k_selected": candidate_entry.get("auto_k_selected", None),
+                "partition_auto_k_feasible_k_min": candidate_entry.get("auto_k_feasible_k_min", None),
+                "partition_auto_k_feasible_k_max": candidate_entry.get("auto_k_feasible_k_max", None),
+                "partition_auto_k_fallback_reason": candidate_entry.get("auto_k_fallback_reason", None),
+                "partition_auto_k_eigengap_selected_k": candidate_entry.get("auto_k_eigengap_selected_k", None),
+                "partition_auto_k_eigengap_scores": candidate_entry.get("auto_k_eigengap_scores", None),
+                "partition_auto_k_silhouette_scores": candidate_entry.get("auto_k_silhouette_scores", None),
+                "partition_auto_k_stability_scores": candidate_entry.get("auto_k_stability_scores", None),
+                "partition_auto_k_bic_scores": candidate_entry.get("auto_k_bic_scores", None),
+                "partition_auto_k_eigenvalues": candidate_entry.get("auto_k_eigenvalues", None),
+                "partition_coco_cache_hit": candidate_entry.get("coco_cache_hit", None),
+                "partition_coco_line_graph_num_nodes": candidate_entry.get("coco_line_graph_num_nodes", None),
+                "partition_coco_line_graph_num_edges": candidate_entry.get("coco_line_graph_num_edges", None),
+                "partition_coco_line_graph_density": candidate_entry.get("coco_line_graph_density", None),
+                "partition_coco_train_runtime_sec": candidate_entry.get("coco_train_runtime_sec", None),
+                "partition_coco_epochs": candidate_entry.get("coco_epochs", None),
+                "partition_coco_effective_clusters": candidate_entry.get("coco_effective_clusters", None),
+                "partition_coco_best_loss": candidate_entry.get("coco_best_loss", None),
+                "partition_coco_device": candidate_entry.get("coco_device", None),
+                "partition_coco_full_assignment_missing_edges": candidate_entry.get("coco_full_assignment_missing_edges", None),
+                "partition_coco_fallback_to_candidate_line_graph": candidate_entry.get(
+                    "coco_fallback_to_candidate_line_graph", None
+                ),
                 "groupwise_num_groups": int(candidate_entry.get("num_groups", 0)),
                 "groupwise_objective_final": candidate_entry.get("objective_final", None),
                 "groupwise_objective_global": candidate_entry.get("objective_global", None),
@@ -2051,6 +2117,43 @@ def save_candidate_result_tables(
         "clusterwise_step_by_step_mean_parameter_shift",
         "clusterwise_step_by_step_mean_message_propagation",
         "clusterwise_step_by_step_num_permutations",
+        "partition_method",
+        "partition_strategy",
+        "partition_num_groups",
+        "partition_cluster_sizes",
+        "partition_weighted_cut",
+        "partition_runtime_sec",
+        "partition_affinity_num_nodes",
+        "partition_affinity_num_edges",
+        "partition_affinity_density",
+        "partition_affinity_weight_sum",
+        "partition_metis_cutcount",
+        "partition_clusters",
+        "partition_owner_partition_histogram",
+        "partition_cross_owner_candidate_edges",
+        "partition_masked_affinity_entries",
+        "partition_auto_k_method",
+        "partition_auto_k_selected",
+        "partition_auto_k_feasible_k_min",
+        "partition_auto_k_feasible_k_max",
+        "partition_auto_k_fallback_reason",
+        "partition_auto_k_eigengap_selected_k",
+        "partition_auto_k_eigengap_scores",
+        "partition_auto_k_silhouette_scores",
+        "partition_auto_k_stability_scores",
+        "partition_auto_k_bic_scores",
+        "partition_auto_k_eigenvalues",
+        "partition_coco_cache_hit",
+        "partition_coco_line_graph_num_nodes",
+        "partition_coco_line_graph_num_edges",
+        "partition_coco_line_graph_density",
+        "partition_coco_train_runtime_sec",
+        "partition_coco_epochs",
+        "partition_coco_effective_clusters",
+        "partition_coco_best_loss",
+        "partition_coco_device",
+        "partition_coco_full_assignment_missing_edges",
+        "partition_coco_fallback_to_candidate_line_graph",
         "groupwise_num_groups",
         "groupwise_objective_final",
         "groupwise_objective_global",
@@ -2107,6 +2210,49 @@ def save_candidate_result_tables(
             }
 
             partition_values = partition_values_by_candidate.get(candidate_idx, {})
+            row["partition_method"] = partition_values.get("partition_method", None)
+            row["partition_strategy"] = partition_values.get("partition_strategy", None)
+            row["partition_num_groups"] = partition_values.get("partition_num_groups", None)
+            row["partition_cluster_sizes"] = partition_values.get("partition_cluster_sizes", None)
+            row["partition_weighted_cut"] = partition_values.get("partition_weighted_cut", None)
+            row["partition_runtime_sec"] = partition_values.get("partition_runtime_sec", None)
+            row["partition_affinity_num_nodes"] = partition_values.get("partition_affinity_num_nodes", None)
+            row["partition_affinity_num_edges"] = partition_values.get("partition_affinity_num_edges", None)
+            row["partition_affinity_density"] = partition_values.get("partition_affinity_density", None)
+            row["partition_affinity_weight_sum"] = partition_values.get("partition_affinity_weight_sum", None)
+            row["partition_metis_cutcount"] = partition_values.get("partition_metis_cutcount", None)
+            row["partition_clusters"] = partition_values.get("partition_clusters", None)
+            row["partition_owner_partition_histogram"] = partition_values.get("partition_owner_partition_histogram", None)
+            row["partition_cross_owner_candidate_edges"] = partition_values.get("partition_cross_owner_candidate_edges", None)
+            row["partition_masked_affinity_entries"] = partition_values.get("partition_masked_affinity_entries", None)
+            row["partition_auto_k_method"] = partition_values.get("partition_auto_k_method", None)
+            row["partition_auto_k_selected"] = partition_values.get("partition_auto_k_selected", None)
+            row["partition_auto_k_feasible_k_min"] = partition_values.get("partition_auto_k_feasible_k_min", None)
+            row["partition_auto_k_feasible_k_max"] = partition_values.get("partition_auto_k_feasible_k_max", None)
+            row["partition_auto_k_fallback_reason"] = partition_values.get("partition_auto_k_fallback_reason", None)
+            row["partition_auto_k_eigengap_selected_k"] = partition_values.get(
+                "partition_auto_k_eigengap_selected_k", None
+            )
+            row["partition_auto_k_eigengap_scores"] = partition_values.get("partition_auto_k_eigengap_scores", None)
+            row["partition_auto_k_silhouette_scores"] = partition_values.get("partition_auto_k_silhouette_scores", None)
+            row["partition_auto_k_stability_scores"] = partition_values.get("partition_auto_k_stability_scores", None)
+            row["partition_auto_k_bic_scores"] = partition_values.get("partition_auto_k_bic_scores", None)
+            row["partition_auto_k_eigenvalues"] = partition_values.get("partition_auto_k_eigenvalues", None)
+            row["partition_coco_cache_hit"] = partition_values.get("partition_coco_cache_hit", None)
+            row["partition_coco_line_graph_num_nodes"] = partition_values.get("partition_coco_line_graph_num_nodes", None)
+            row["partition_coco_line_graph_num_edges"] = partition_values.get("partition_coco_line_graph_num_edges", None)
+            row["partition_coco_line_graph_density"] = partition_values.get("partition_coco_line_graph_density", None)
+            row["partition_coco_train_runtime_sec"] = partition_values.get("partition_coco_train_runtime_sec", None)
+            row["partition_coco_epochs"] = partition_values.get("partition_coco_epochs", None)
+            row["partition_coco_effective_clusters"] = partition_values.get("partition_coco_effective_clusters", None)
+            row["partition_coco_best_loss"] = partition_values.get("partition_coco_best_loss", None)
+            row["partition_coco_device"] = partition_values.get("partition_coco_device", None)
+            row["partition_coco_full_assignment_missing_edges"] = partition_values.get(
+                "partition_coco_full_assignment_missing_edges", None
+            )
+            row["partition_coco_fallback_to_candidate_line_graph"] = partition_values.get(
+                "partition_coco_fallback_to_candidate_line_graph", None
+            )
             row["groupwise_num_groups"] = partition_values.get("groupwise_num_groups", None)
             row["groupwise_objective_final"] = partition_values.get("groupwise_objective_final", None)
             row["groupwise_objective_global"] = partition_values.get("groupwise_objective_global", None)

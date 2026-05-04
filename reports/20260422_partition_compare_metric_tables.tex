@@ -1,0 +1,162 @@
+% Partition compare metric tables.
+% Each cell is formatted as Control / METIS.
+% Control = whole-group baseline estimate.
+% METIS = cluster-sum estimate with METIS partition.
+% Bold marks the better value in each cell.
+% MAPE is computed from candidate-level CSVs as mean(|pred-target| / |target|),
+% using only finite PBRF targets.
+
+\begin{table*}[t]
+\centering
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{c|cccc|cccc||cccc|cccc}
+\toprule
+& \multicolumn{8}{c||}{\textbf{Homophilic}} & \multicolumn{8}{c}{\textbf{Heterophilic}} \\
+& \multicolumn{4}{c|}{Cora} & \multicolumn{4}{c||}{CiteSeer} & \multicolumn{4}{c|}{Texas} & \multicolumn{4}{c}{Cornell} \\
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c|}{GAT}
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c||}{GAT}
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c|}{GAT}
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c}{GAT} \\
+& 2 & 4 & 2 & 4
+& 2 & 4 & 2 & 4
+& 2 & 4 & 2 & 4
+& 2 & 4 & 2 & 4 \\
+\midrule
+1 & \textbf{0.87}/0.86 & 0.69/\textbf{0.71} & 0.69/0.69 & \textbf{0.78}/0.75 & 0.79/0.79 & 0.64/0.64 & 0.43/0.43 & \textbf{0.60}/0.59 & \textbf{0.49}/0.44 & \textbf{0.69}/0.66 & 0.76/\textbf{0.77} & 0.34/\textbf{0.40} & 0.75/\textbf{0.79} & \textbf{0.57}/0.52 & 0.47/0.48 & -0.02/\textbf{0.03} \\
+5 & 0.79/0.79 & 0.72/0.72 & 0.78/0.78 & 0.89/0.89 & \textbf{0.89}/0.88 & 0.72/0.72 & 0.61/0.61 & 0.74/\textbf{0.74} & \textbf{0.73}/0.62 & \textbf{0.31}/0.27 & \textbf{0.35}/0.33 & \textbf{0.53}/0.52 & \textbf{0.83}/0.80 & \textbf{0.53}/0.51 & 0.28/0.28 & \textbf{0.30}/0.20 \\
+10 & 0.90/0.90 & \textbf{0.75}/0.71 & 0.78/\textbf{0.79} & \textbf{0.94}/0.93 & 0.79/\textbf{0.81} & 0.76/0.76 & \textbf{0.53}/0.52 & 0.67/0.66 & \textbf{0.62}/0.53 & \textbf{0.31}/0.29 & 0.42/\textbf{0.43} & 0.36/0.36 & \textbf{0.84}/0.81 & 0.59/0.59 & 0.45/\textbf{0.47} & \textbf{0.15}/0.05 \\
+30 & \textbf{0.81}/0.79 & \textbf{0.62}/0.56 & \textbf{0.67}/0.61 & \textbf{0.91}/0.86 & 0.74/0.75 & 0.67/0.67 & \textbf{0.37}/0.36 & 0.51/\textbf{0.52} & \textbf{0.68}/0.49 & \textbf{0.36}/0.30 & \textbf{0.13}/0.05 & \textbf{0.33}/0.30 & 0.87/\textbf{0.89} & 0.23/\textbf{0.29} & \textbf{0.33}/0.33 & \textbf{0.07}/-0.03 \\
+50 & \textbf{0.69}/0.67 & 0.54/\textbf{0.55} & \textbf{0.80}/0.70 & \textbf{0.90}/0.86 & 0.66/\textbf{0.69} & \textbf{0.47}/0.43 & \textbf{0.40}/0.39 & 0.53/\textbf{0.54} & \textbf{0.79}/0.78 & \textbf{0.24}/0.21 & 0.25/\textbf{0.31} & \textbf{0.18}/0.17 & 0.80/\textbf{0.86} & 0.44/\textbf{0.45} & \textbf{0.19}/0.18 & 0.17/\textbf{0.25} \\
+80 & \textbf{0.58}/0.46 & 0.46/\textbf{0.56} & \textbf{0.57}/0.56 & \textbf{0.61}/0.53 & 0.60/\textbf{0.63} & \textbf{0.17}/0.16 & 0.59/0.59 & 0.55/\textbf{0.57} & \textbf{0.57}/0.51 & 0.02/\textbf{0.04} & 0.05/\textbf{0.16} & \textbf{0.27}/0.12 & \textbf{0.58}/0.56 & 0.21/\textbf{0.27} & 0.02/\textbf{0.05} & \textbf{0.39}/0.33 \\
+\bottomrule
+\end{tabular}%
+}
+\caption{Influence Spearman correlation across drop ratios. Each cell is Control/METIS; higher is better.}
+\label{tab:partition_compare_spearman_ctrl_metis}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{c|cccc|cccc||cccc|cccc}
+\toprule
+& \multicolumn{8}{c||}{\textbf{Homophilic}} & \multicolumn{8}{c}{\textbf{Heterophilic}} \\
+& \multicolumn{4}{c|}{Cora} & \multicolumn{4}{c||}{CiteSeer} & \multicolumn{4}{c|}{Texas} & \multicolumn{4}{c}{Cornell} \\
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c|}{GAT}
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c||}{GAT}
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c|}{GAT}
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c}{GAT} \\
+& 2 & 4 & 2 & 4
+& 2 & 4 & 2 & 4
+& 2 & 4 & 2 & 4
+& 2 & 4 & 2 & 4 \\
+\midrule
+1 & 0.85/0.85 & 0.72/\textbf{0.74} & 0.65/0.65 & \textbf{0.93}/0.93 & 0.84/0.84 & 0.63/0.63 & 0.57/0.57 & 0.62/0.62 & \textbf{0.32}/0.23 & \textbf{0.51}/0.49 & 0.77/0.77 & 0.42/\textbf{0.46} & 0.78/\textbf{0.81} & 0.54/0.54 & 0.33/0.33 & \textbf{0.05}/0.04 \\
+5 & 0.88/0.88 & \textbf{0.77}/0.74 & 0.76/0.76 & 0.89/0.89 & 0.89/0.89 & 0.69/0.68 & 0.64/0.64 & 0.76/0.76 & \textbf{0.72}/0.67 & 0.40/0.40 & \textbf{0.31}/0.29 & \textbf{0.57}/0.55 & \textbf{0.84}/0.82 & 0.52/0.52 & \textbf{0.43}/0.41 & 0.02/\textbf{0.13} \\
+10 & \textbf{0.92}/0.91 & \textbf{0.71}/0.66 & 0.79/0.79 & 0.94/0.94 & 0.82/0.82 & 0.67/\textbf{0.70} & \textbf{0.59}/0.58 & \textbf{0.68}/0.68 & \textbf{0.62}/0.54 & 0.29/\textbf{0.31} & \textbf{0.36}/0.35 & \textbf{0.44}/0.43 & \textbf{0.83}/0.81 & 0.58/\textbf{0.59} & 0.43/\textbf{0.50} & \textbf{0.15}/0.11 \\
+30 & \textbf{0.87}/0.86 & \textbf{0.61}/0.59 & \textbf{0.70}/0.68 & \textbf{0.92}/0.90 & 0.76/\textbf{0.77} & \textbf{0.70}/0.69 & 0.42/0.42 & 0.52/\textbf{0.53} & \textbf{0.73}/0.59 & \textbf{0.34}/0.31 & \textbf{0.06}/0.02 & 0.24/\textbf{0.27} & 0.86/\textbf{0.88} & 0.34/\textbf{0.37} & \textbf{0.36}/0.35 & \textbf{-0.16}/-0.22 \\
+50 & 0.68/0.68 & \textbf{0.53}/0.52 & \textbf{0.76}/0.70 & \textbf{0.90}/0.83 & 0.68/\textbf{0.70} & \textbf{0.52}/0.47 & 0.40/0.40 & 0.52/\textbf{0.55} & 0.79/0.79 & \textbf{0.28}/0.22 & \textbf{0.33}/0.31 & \textbf{0.10}/0.09 & 0.80/\textbf{0.83} & 0.46/\textbf{0.48} & 0.16/\textbf{0.23} & 0.03/\textbf{0.16} \\
+80 & \textbf{0.57}/0.48 & 0.52/\textbf{0.63} & \textbf{0.69}/0.61 & \textbf{0.62}/0.56 & 0.72/\textbf{0.73} & \textbf{0.14}/0.13 & 0.54/0.53 & 0.53/\textbf{0.54} & \textbf{0.57}/0.52 & 0.04/\textbf{0.05} & \textbf{0.19}/0.15 & \textbf{0.00}/-0.27 & \textbf{0.61}/0.53 & 0.20/\textbf{0.28} & \textbf{0.01}/-0.03 & \textbf{0.42}/0.39 \\
+\bottomrule
+\end{tabular}%
+}
+\caption{Influence Pearson correlation across drop ratios. Each cell is Control/METIS; higher is better.}
+\label{tab:partition_compare_pearson_ctrl_metis}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{c|cccc|cccc||cccc|cccc}
+\toprule
+& \multicolumn{8}{c||}{\textbf{Homophilic}} & \multicolumn{8}{c}{\textbf{Heterophilic}} \\
+& \multicolumn{4}{c|}{Cora} & \multicolumn{4}{c||}{CiteSeer} & \multicolumn{4}{c|}{Texas} & \multicolumn{4}{c}{Cornell} \\
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c|}{GAT}
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c||}{GAT}
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c|}{GAT}
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c}{GAT} \\
+& 2 & 4 & 2 & 4
+& 2 & 4 & 2 & 4
+& 2 & 4 & 2 & 4
+& 2 & 4 & 2 & 4 \\
+\midrule
+1 & 0.00/0.00 & 0.00/0.00 & 0.00/0.00 & 0.00/0.00 & 0.00/0.00 & 0.00/0.00 & 0.00/0.00 & 0.00/0.00 & \textbf{0.02}/0.03 & 0.01/0.01 & 0.03/0.03 & 0.03/0.03 & 0.01/0.01 & 0.01/0.01 & 0.03/0.03 & \textbf{0.04}/0.06 \\
+5 & 0.00/0.00 & 0.01/0.01 & 0.01/0.01 & 0.00/0.00 & 0.00/0.00 & 0.00/0.00 & 0.01/0.01 & 0.01/0.01 & \textbf{0.03}/0.04 & 0.03/0.03 & 0.15/0.15 & 0.07/0.07 & 0.01/0.01 & 0.02/0.02 & 0.07/0.07 & \textbf{0.37}/0.39 \\
+10 & 0.00/0.00 & 0.01/0.01 & 0.01/0.01 & 0.00/0.00 & 0.00/0.00 & 0.01/0.01 & 0.03/0.03 & 0.03/0.03 & \textbf{0.03}/0.05 & 0.04/0.04 & 0.35/0.35 & 0.15/0.15 & 0.02/0.02 & 0.02/0.02 & 0.11/0.11 & 0.19/\textbf{0.18} \\
+30 & 0.00/0.00 & 0.03/0.03 & 0.05/0.05 & 0.01/0.01 & 0.01/0.01 & 0.01/0.01 & 0.10/0.10 & 0.11/0.11 & \textbf{0.05}/0.07 & 0.10/0.10 & 0.70/\textbf{0.69} & 1.31/\textbf{1.25} & 0.04/\textbf{0.04} & 0.07/0.07 & 0.24/0.23 & 1.21/\textbf{1.17} \\
+50 & 0.01/0.00 & 0.09/0.09 & \textbf{0.10}/0.10 & \textbf{0.01}/0.02 & 0.01/0.01 & 0.04/0.04 & 0.19/0.19 & 0.22/0.22 & \textbf{0.08}/0.11 & 0.16/0.16 & 0.80/\textbf{0.79} & 20.79/\textbf{20.59} & 0.08/\textbf{0.07} & 0.11/\textbf{0.11} & 0.38/\textbf{0.37} & 5.77/\textbf{5.76} \\
+80 & 0.01/0.01 & 0.41/\textbf{0.41} & \textbf{0.21}/0.24 & \textbf{0.03}/0.05 & 0.03/0.03 & 0.24/0.24 & 0.36/0.37 & 0.45/0.45 & \textbf{0.26}/0.31 & 0.19/\textbf{0.16} & 0.89/\textbf{0.84} & 66.70/\textbf{66.32} & 0.24/0.25 & 0.33/\textbf{0.30} & 0.38/\textbf{0.34} & \textbf{2.20}/2.46 \\
+\bottomrule
+\end{tabular}%
+}
+\caption{Influence MAE across drop ratios. Each cell is Control/METIS; lower is better.}
+\label{tab:partition_compare_mae_ctrl_metis}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{c|cccc|cccc||cccc|cccc}
+\toprule
+& \multicolumn{8}{c||}{\textbf{Homophilic}} & \multicolumn{8}{c}{\textbf{Heterophilic}} \\
+& \multicolumn{4}{c|}{Cora} & \multicolumn{4}{c||}{CiteSeer} & \multicolumn{4}{c|}{Texas} & \multicolumn{4}{c}{Cornell} \\
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c|}{GAT}
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c||}{GAT}
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c|}{GAT}
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c}{GAT} \\
+& 2 & 4 & 2 & 4
+& 2 & 4 & 2 & 4
+& 2 & 4 & 2 & 4
+& 2 & 4 & 2 & 4 \\
+\midrule
+1 & \textbf{1.93}/2.03 & \textbf{4.09}/4.65 & 2.37/2.37 & 1.62/\textbf{1.60} & 1.12/1.12 & \textbf{1.28}/1.28 & 0.82/0.82 & \textbf{0.94}/0.95 & \textbf{12.12}/16.21 & \textbf{1.90}/2.07 & \textbf{5.28}/5.46 & \textbf{7.85}/8.18 & 2.53/\textbf{2.20} & 4.00/\textbf{3.86} & \textbf{2.28}/2.32 & \textbf{236.84}/259.86 \\
+5 & \textbf{4.70}/5.14 & \textbf{4.19}/4.28 & 0.76/\textbf{0.75} & \textbf{1.91}/2.15 & 1.92/\textbf{1.90} & \textbf{1.43}/1.47 & 0.92/0.92 & 1.02/1.01 & \textbf{5.66}/6.84 & 3.10/\textbf{2.98} & 3.16/\textbf{3.15} & 2.00/\textbf{1.81} & \textbf{1.20}/1.61 & \textbf{2.45}/2.59 & 2.38/\textbf{2.21} & \textbf{2.06}/3.57 \\
+10 & 1.42/\textbf{0.98} & \textbf{2.80}/3.00 & 0.71/0.71 & \textbf{2.35}/2.56 & 0.92/\textbf{0.91} & 3.75/\textbf{3.65} & 0.87/0.87 & 0.88/0.87 & \textbf{10.11}/13.30 & 5.77/\textbf{5.58} & \textbf{16.54}/17.21 & \textbf{1.54}/1.61 & 2.80/\textbf{2.50} & 1.70/\textbf{1.50} & \textbf{5.46}/5.61 & 2.22/\textbf{1.76} \\
+30 & 2.54/\textbf{1.89} & \textbf{0.92}/1.01 & \textbf{0.66}/0.68 & \textbf{0.29}/0.34 & 1.05/\textbf{1.01} & \textbf{1.55}/1.62 & 0.83/0.83 & 0.80/0.80 & \textbf{1.86}/2.57 & 6.73/\textbf{6.23} & \textbf{1.75}/1.77 & \textbf{0.73}/0.74 & 19.32/\textbf{18.84} & \textbf{6.09}/6.56 & 2.46/\textbf{1.93} & 1.35/\textbf{1.13} \\
+50 & 3.00/\textbf{2.72} & \textbf{0.80}/0.81 & \textbf{0.62}/0.66 & \textbf{0.16}/0.25 & \textbf{0.85}/0.86 & 0.69/\textbf{0.67} & 0.82/0.83 & 0.81/0.82 & \textbf{3.75}/7.11 & 9.17/\textbf{8.07} & \textbf{2.49}/2.74 & 0.84/\textbf{0.69} & 7.19/\textbf{6.32} & 4.83/\textbf{3.45} & \textbf{1.77}/1.86 & 18.92/\textbf{13.15} \\
+80 & 0.83/\textbf{0.75} & 0.93/\textbf{0.92} & \textbf{0.54}/0.61 & \textbf{0.11}/0.17 & \textbf{0.65}/0.68 & 0.90/0.90 & \textbf{0.80}/0.81 & \textbf{0.81}/0.81 & \textbf{2.09}/2.74 & 6.46/\textbf{5.47} & \textbf{3.69}/4.00 & \textbf{0.95}/1.02 & 0.95/0.95 & 1.17/\textbf{1.05} & 19.52/\textbf{16.00} & \textbf{2.58}/3.48 \\
+\bottomrule
+\end{tabular}%
+}
+\caption{Influence MAPE across drop ratios. Each cell is Control/METIS; lower is better. MAPE is reported in ratio form, not multiplied by 100, and uses only finite PBRF targets.}
+\label{tab:partition_compare_mape_ctrl_metis}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{c|cccc|cccc||cccc|cccc}
+\toprule
+& \multicolumn{8}{c||}{\textbf{Homophilic}} & \multicolumn{8}{c}{\textbf{Heterophilic}} \\
+& \multicolumn{4}{c|}{Cora} & \multicolumn{4}{c||}{CiteSeer} & \multicolumn{4}{c|}{Texas} & \multicolumn{4}{c}{Cornell} \\
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c|}{GAT}
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c||}{GAT}
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c|}{GAT}
+& \multicolumn{2}{c}{GCN} & \multicolumn{2}{c}{GAT} \\
+& 2 & 4 & 2 & 4
+& 2 & 4 & 2 & 4
+& 2 & 4 & 2 & 4
+& 2 & 4 & 2 & 4 \\
+\midrule
+1 & \textbf{0.86}/0.84 & 0.74/\textbf{0.76} & 0.78/0.78 & \textbf{0.78}/0.74 & 0.80/0.80 & 0.86/0.86 & 0.72/0.72 & 0.70/0.70 & \textbf{0.68}/0.64 & \textbf{0.82}/0.80 & \textbf{0.82}/0.80 & 0.70/\textbf{0.76} & 0.80/\textbf{0.84} & \textbf{0.74}/0.70 & 0.70/0.70 & 0.66/\textbf{0.70} \\
+5 & 0.94/0.94 & 0.60/0.60 & 0.84/0.84 & 0.80/0.80 & 0.78/0.78 & 0.78/\textbf{0.80} & 0.74/0.74 & 0.72/0.72 & \textbf{0.80}/0.68 & 0.50/\textbf{0.52} & \textbf{0.44}/0.38 & 0.76/\textbf{0.78} & \textbf{0.86}/0.82 & 0.72/0.72 & \textbf{0.64}/0.62 & 0.76/0.76 \\
+10 & 0.92/0.92 & \textbf{0.60}/0.54 & \textbf{0.88}/0.86 & 0.88/0.88 & 0.88/0.88 & 0.84/\textbf{0.86} & 0.74/0.74 & 0.78/0.78 & \textbf{0.74}/0.70 & \textbf{0.64}/0.62 & 0.38/0.38 & 0.86/\textbf{0.88} & \textbf{0.80}/0.78 & 0.70/\textbf{0.72} & 0.68/\textbf{0.70} & 0.61/\textbf{0.63} \\
+30 & 0.90/0.90 & \textbf{0.78}/0.68 & 1.00/1.00 & 0.98/0.98 & 0.84/\textbf{0.86} & \textbf{0.86}/0.82 & 1.00/1.00 & 0.98/0.98 & \textbf{0.68}/0.66 & 0.52/0.52 & 0.26/\textbf{0.28} & 0.96/\textbf{0.98} & 0.72/\textbf{0.74} & 0.44/\textbf{0.48} & 0.56/\textbf{0.62} & 0.42/\textbf{0.46} \\
+50 & 0.76/\textbf{0.84} & 0.88/\textbf{0.90} & 1.00/1.00 & 1.00/1.00 & 0.92/0.92 & 0.88/0.88 & 1.00/1.00 & 1.00/1.00 & \textbf{0.62}/0.54 & \textbf{0.52}/0.50 & \textbf{0.16}/0.14 & 0.98/0.98 & 0.58/\textbf{0.68} & 0.48/0.48 & \textbf{0.52}/0.46 & \textbf{0.46}/0.43 \\
+80 & 0.72/\textbf{0.80} & 0.92/0.92 & 1.00/1.00 & 1.00/1.00 & 1.00/1.00 & 0.90/\textbf{0.92} & 1.00/1.00 & 1.00/1.00 & \textbf{0.14}/0.02 & 0.74/0.74 & 0.08/\textbf{0.14} & 0.72/\textbf{0.97} & 0.68/\textbf{0.72} & 0.30/\textbf{0.46} & 0.46/\textbf{0.50} & \textbf{0.24}/0.13 \\
+\bottomrule
+\end{tabular}%
+}
+\caption{Influence sign accuracy across drop ratios. Each cell is Control/METIS; higher is better.}
+\label{tab:partition_compare_signacc_ctrl_metis}
+\end{table*}

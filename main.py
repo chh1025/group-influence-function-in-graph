@@ -180,6 +180,86 @@ def _ensure_optional_defaults(args):
         args.inter_cluster_dist = 1
     if not hasattr(args, "metric_mode"):
         args.metric_mode = "global"
+    if not hasattr(args, "partition_method"):
+        args.partition_method = "metis"
+    if not hasattr(args, "partition_strategy"):
+        args.partition_strategy = "candidate_local_affinity"
+    if not hasattr(args, "partition_shared_endpoint_bonus"):
+        args.partition_shared_endpoint_bonus = 1.0
+    if not hasattr(args, "partition_distance_scale"):
+        args.partition_distance_scale = 1.0
+    if not hasattr(args, "partition_distance_max_hops"):
+        args.partition_distance_max_hops = 3
+    if not hasattr(args, "partition_min_weight"):
+        args.partition_min_weight = 1e-8
+    if not hasattr(args, "hybrid_cross_owner_affinity_scale"):
+        args.hybrid_cross_owner_affinity_scale = 0.0
+    if not hasattr(args, "coco_epochs"):
+        args.coco_epochs = 200
+    if not hasattr(args, "coco_lr"):
+        args.coco_lr = 1e-3
+    if not hasattr(args, "coco_hidden_dim"):
+        args.coco_hidden_dim = 256
+    if not hasattr(args, "coco_activation"):
+        args.coco_activation = "ident"
+    if not hasattr(args, "coco_compact_k"):
+        args.coco_compact_k = 64
+    if not hasattr(args, "coco_stage_num"):
+        args.coco_stage_num = 10
+    if not hasattr(args, "coco_beta"):
+        args.coco_beta = 1.0
+    if not hasattr(args, "coco_filter_steps"):
+        args.coco_filter_steps = 2
+    if not hasattr(args, "coco_alpha"):
+        args.coco_alpha = 0.2
+    if not hasattr(args, "coco_consistency_t"):
+        args.coco_consistency_t = 0.02
+    if not hasattr(args, "coco_memory_size"):
+        args.coco_memory_size = 0
+    if not hasattr(args, "coco_memory_multiplier"):
+        args.coco_memory_multiplier = 10
+    if not hasattr(args, "coco_pca_dim"):
+        args.coco_pca_dim = -1
+    if not hasattr(args, "coco_use_diffusion"):
+        args.coco_use_diffusion = 1
+    if not hasattr(args, "coco_kmeans_distance"):
+        args.coco_kmeans_distance = "euclidean"
+    if not hasattr(args, "coco_device"):
+        args.coco_device = "auto"
+    if not hasattr(args, "coco_cache_dir"):
+        args.coco_cache_dir = "results/coco_line_graph_cache"
+    if not hasattr(args, "coco_force_retrain"):
+        args.coco_force_retrain = 0
+    if not hasattr(args, "coco_max_line_graph_nodes"):
+        args.coco_max_line_graph_nodes = 6000
+    if not hasattr(args, "auto_k_method"):
+        args.auto_k_method = "none"
+    if not hasattr(args, "auto_k_min"):
+        args.auto_k_min = 1
+    if not hasattr(args, "auto_k_max"):
+        args.auto_k_max = 8
+    if not hasattr(args, "auto_k_max_ratio"):
+        args.auto_k_max_ratio = 1.0
+    if not hasattr(args, "auto_k_min_cluster_size"):
+        args.auto_k_min_cluster_size = 1
+    if not hasattr(args, "auto_k_max_cluster_size"):
+        args.auto_k_max_cluster_size = 0
+    if not hasattr(args, "auto_k_tiny_graph_threshold"):
+        args.auto_k_tiny_graph_threshold = 4
+    if not hasattr(args, "auto_k_num_restarts"):
+        args.auto_k_num_restarts = 10
+    if not hasattr(args, "auto_k_random_seed"):
+        args.auto_k_random_seed = 0
+    if not hasattr(args, "auto_k_silhouette_metric"):
+        args.auto_k_silhouette_metric = "euclidean"
+    if not hasattr(args, "auto_k_stability_trials"):
+        args.auto_k_stability_trials = 10
+    if not hasattr(args, "auto_k_stability_edge_dropout"):
+        args.auto_k_stability_edge_dropout = 0.05
+    if not hasattr(args, "auto_k_weak_silhouette_threshold"):
+        args.auto_k_weak_silhouette_threshold = 0.05
+    if not hasattr(args, "auto_k_prefer_smaller_k"):
+        args.auto_k_prefer_smaller_k = 1
     if not hasattr(args, "groupwise_num_groups_init"):
         args.groupwise_num_groups_init = None
     if not hasattr(args, "groupwise_alpha_repr"):
@@ -388,7 +468,85 @@ def _create_parser():
         default="contiguous",
         choices=["contiguous", "round_robin"],
     )
-    parser.add_argument("--metric_mode", type=str, default="global", choices=["global", "groupwise"])
+    parser.add_argument("--metric_mode", type=str, default="global", choices=["global", "groupwise", "partition"])
+    parser.add_argument(
+        "--partition_method",
+        type=str,
+        default="metis",
+        choices=["metis", "spectral", "local_ppr", "coco"],
+    )
+    parser.add_argument(
+        "--partition_strategy",
+        type=str,
+        default="candidate_local_affinity",
+        choices=[
+            "candidate_local_affinity",
+            "global_training_graph_assignment",
+            "hybrid_training_graph_masked_local",
+            "coco_full_line_graph_assignment",
+            "coco_candidate_line_graph",
+        ],
+    )
+    parser.add_argument("--partition_shared_endpoint_bonus", type=float, default=1.0)
+    parser.add_argument("--partition_distance_scale", type=float, default=1.0)
+    parser.add_argument("--partition_distance_max_hops", type=int, default=3)
+    parser.add_argument("--partition_min_weight", type=float, default=1e-8)
+    parser.add_argument("--hybrid_cross_owner_affinity_scale", type=float, default=0.0)
+    parser.add_argument("--coco_epochs", type=int, default=200)
+    parser.add_argument("--coco_lr", type=float, default=1e-3)
+    parser.add_argument("--coco_hidden_dim", type=int, default=256)
+    parser.add_argument(
+        "--coco_activation",
+        type=str,
+        default="ident",
+        choices=["ident", "sigmoid", "relu", "leakyrelu"],
+    )
+    parser.add_argument("--coco_compact_k", type=int, default=64)
+    parser.add_argument("--coco_stage_num", type=int, default=10)
+    parser.add_argument("--coco_beta", type=float, default=1.0)
+    parser.add_argument("--coco_filter_steps", type=int, default=2)
+    parser.add_argument("--coco_alpha", type=float, default=0.2)
+    parser.add_argument("--coco_consistency_t", type=float, default=0.02)
+    parser.add_argument("--coco_memory_size", type=int, default=0)
+    parser.add_argument("--coco_memory_multiplier", type=int, default=10)
+    parser.add_argument("--coco_pca_dim", type=int, default=-1)
+    parser.add_argument("--coco_use_diffusion", type=int, default=1)
+    parser.add_argument(
+        "--coco_kmeans_distance",
+        type=str,
+        default="euclidean",
+        choices=["euclidean", "cosine"],
+    )
+    parser.add_argument("--coco_device", type=str, default="auto")
+    parser.add_argument("--coco_cache_dir", type=str, default="results/coco_line_graph_cache")
+    parser.add_argument("--coco_force_retrain", type=int, default=0)
+    parser.add_argument("--coco_max_line_graph_nodes", type=int, default=6000)
+    parser.add_argument(
+        "--auto_k_method",
+        type=str,
+        default="none",
+        choices=[
+            "none",
+            "eigengap",
+            "silhouette",
+            "eigengap_silhouette_hybrid",
+            "stability",
+            "bic_xmeans_like",
+        ],
+    )
+    parser.add_argument("--auto_k_min", type=int, default=1)
+    parser.add_argument("--auto_k_max", type=int, default=8)
+    parser.add_argument("--auto_k_max_ratio", type=float, default=1.0)
+    parser.add_argument("--auto_k_min_cluster_size", type=int, default=1)
+    parser.add_argument("--auto_k_max_cluster_size", type=int, default=0)
+    parser.add_argument("--auto_k_tiny_graph_threshold", type=int, default=4)
+    parser.add_argument("--auto_k_num_restarts", type=int, default=10)
+    parser.add_argument("--auto_k_random_seed", type=int, default=0)
+    parser.add_argument("--auto_k_silhouette_metric", type=str, default="euclidean")
+    parser.add_argument("--auto_k_stability_trials", type=int, default=10)
+    parser.add_argument("--auto_k_stability_edge_dropout", type=float, default=0.05)
+    parser.add_argument("--auto_k_weak_silhouette_threshold", type=float, default=0.05)
+    parser.add_argument("--auto_k_prefer_smaller_k", type=int, default=1)
     parser.add_argument("--groupwise_num_groups_init", type=int, default=None)
     parser.add_argument("--groupwise_alpha_repr", type=float, default=1.0)
     parser.add_argument("--groupwise_beta_proxy", type=float, default=1.0)
@@ -478,6 +636,46 @@ def _args_from_hydra_cfg(cfg):
         inter_cluster_dist=int(exp_cfg.get("inter_cluster_dist", 1)),
         cluster_partition_strategy=exp_cfg.get("cluster_partition_strategy", "contiguous"),
         metric_mode=exp_cfg.get("metric_mode", "global"),
+        partition_method=exp_cfg.get("partition_method", "metis"),
+        partition_strategy=exp_cfg.get("partition_strategy", "candidate_local_affinity"),
+        partition_shared_endpoint_bonus=float(exp_cfg.get("partition_shared_endpoint_bonus", 1.0)),
+        partition_distance_scale=float(exp_cfg.get("partition_distance_scale", 1.0)),
+        partition_distance_max_hops=int(exp_cfg.get("partition_distance_max_hops", 3)),
+        partition_min_weight=float(exp_cfg.get("partition_min_weight", 1e-8)),
+        hybrid_cross_owner_affinity_scale=float(exp_cfg.get("hybrid_cross_owner_affinity_scale", 0.0)),
+        coco_epochs=int(exp_cfg.get("coco_epochs", 200)),
+        coco_lr=float(exp_cfg.get("coco_lr", 1e-3)),
+        coco_hidden_dim=int(exp_cfg.get("coco_hidden_dim", 256)),
+        coco_activation=exp_cfg.get("coco_activation", "ident"),
+        coco_compact_k=int(exp_cfg.get("coco_compact_k", 64)),
+        coco_stage_num=int(exp_cfg.get("coco_stage_num", 10)),
+        coco_beta=float(exp_cfg.get("coco_beta", 1.0)),
+        coco_filter_steps=int(exp_cfg.get("coco_filter_steps", 2)),
+        coco_alpha=float(exp_cfg.get("coco_alpha", 0.2)),
+        coco_consistency_t=float(exp_cfg.get("coco_consistency_t", 0.02)),
+        coco_memory_size=int(exp_cfg.get("coco_memory_size", 0)),
+        coco_memory_multiplier=int(exp_cfg.get("coco_memory_multiplier", 10)),
+        coco_pca_dim=int(exp_cfg.get("coco_pca_dim", -1)),
+        coco_use_diffusion=int(exp_cfg.get("coco_use_diffusion", 1)),
+        coco_kmeans_distance=exp_cfg.get("coco_kmeans_distance", "euclidean"),
+        coco_device=exp_cfg.get("coco_device", "auto"),
+        coco_cache_dir=exp_cfg.get("coco_cache_dir", "results/coco_line_graph_cache"),
+        coco_force_retrain=int(exp_cfg.get("coco_force_retrain", 0)),
+        coco_max_line_graph_nodes=int(exp_cfg.get("coco_max_line_graph_nodes", 6000)),
+        auto_k_method=exp_cfg.get("auto_k_method", "none"),
+        auto_k_min=int(exp_cfg.get("auto_k_min", 1)),
+        auto_k_max=int(exp_cfg.get("auto_k_max", 8)),
+        auto_k_max_ratio=float(exp_cfg.get("auto_k_max_ratio", 1.0)),
+        auto_k_min_cluster_size=int(exp_cfg.get("auto_k_min_cluster_size", 1)),
+        auto_k_max_cluster_size=int(exp_cfg.get("auto_k_max_cluster_size", 0)),
+        auto_k_tiny_graph_threshold=int(exp_cfg.get("auto_k_tiny_graph_threshold", 4)),
+        auto_k_num_restarts=int(exp_cfg.get("auto_k_num_restarts", 10)),
+        auto_k_random_seed=int(exp_cfg.get("auto_k_random_seed", 0)),
+        auto_k_silhouette_metric=exp_cfg.get("auto_k_silhouette_metric", "euclidean"),
+        auto_k_stability_trials=int(exp_cfg.get("auto_k_stability_trials", 10)),
+        auto_k_stability_edge_dropout=float(exp_cfg.get("auto_k_stability_edge_dropout", 0.05)),
+        auto_k_weak_silhouette_threshold=float(exp_cfg.get("auto_k_weak_silhouette_threshold", 0.05)),
+        auto_k_prefer_smaller_k=int(exp_cfg.get("auto_k_prefer_smaller_k", 1)),
         groupwise_num_groups_init=exp_cfg.get("groupwise_num_groups_init", None),
         groupwise_alpha_repr=float(exp_cfg.get("groupwise_alpha_repr", 1.0)),
         groupwise_beta_proxy=float(exp_cfg.get("groupwise_beta_proxy", 1.0)),
@@ -877,6 +1075,7 @@ def run_experiment(args):
         )
 
     _write_done_markers(dirs)
+    return dirs
 
 
 def _should_use_hydra(argv):
