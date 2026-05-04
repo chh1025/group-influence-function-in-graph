@@ -111,3 +111,48 @@ Notes:
 - With only two random edges, `H(S)` and `E(S)` are still very close.
 - This run is a pipeline smoke, not a scientific result.
 - Next step should add Phase 1 candidate construction so `top_abs` and mixed positive/negative candidate sets can reuse single-edge caches.
+
+## Launched Small 20% Drop Partition Baseline
+
+Launched the existing partition comparison scheduler in tmux.
+
+Session:
+
+```text
+partition_small_drop20
+```
+
+Command:
+
+```bash
+source ./conda.sh
+export TS=20260505_015921
+export RATIOS=20
+export GPU_IDS=0,1,2,3
+export MAX_WORKERS=4
+export POLL_INTERVAL_SEC=1.0
+export SUMMARY_CSV=results/partition_compare_summary_small_drop20_20260505_015921.csv
+export JOB_DIR=results/partition_compare_jobs/small_drop20_20260505_015921
+bash run_partition_compare.sh small
+```
+
+Run settings:
+
+- profile: `small`
+- drop ratio: `20%` of all edges via `large_drop_influence`
+- element type: `edge_removal`
+- partition methods: `metis,spectral,local_ppr`
+- partition strategy: `candidate_local_affinity`
+- num clusters: `3`
+- num removal candidates: `50`
+- GPUs: `0,1,2,3`
+- max workers: `4`
+
+Initial worker checks:
+
+- `run_0001`: `metis`, `GCN`, layer `2`, `cora_public`, ratio `20`
+- `run_0002`: `metis`, `GCN`, layer `2`, `citeseer_public`, ratio `20`
+- `run_0003`: `metis`, `GCN`, layer `2`, `texas`, ratio `20`
+- `run_0004`: `metis`, `GCN`, layer `2`, `cornell`, ratio `20`
+
+The scheduler launched four workers concurrently and will continue assigning new runs to free GPUs from the planned small-profile run queue.
