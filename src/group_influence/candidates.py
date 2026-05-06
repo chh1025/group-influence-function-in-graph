@@ -27,6 +27,7 @@ def build_candidate_set(
         state=state,
         influence_type=influence_type,
         pool_size=pool_size,
+        min_edges=num_candidates,
     )
 
     if candidate_type == "random":
@@ -70,7 +71,7 @@ def build_candidate_set(
     }
 
 
-def build_edge_pool(state, influence_type="edge_removal", pool_size=100):
+def build_edge_pool(state, influence_type="edge_removal", pool_size=100, min_edges=None):
     set_seed(state.seed)
     pool_size = int(pool_size)
     if pool_size <= 0:
@@ -83,9 +84,11 @@ def build_edge_pool(state, influence_type="edge_removal", pool_size=100):
     else:
         raise ValueError(f"Unsupported influence_type: {influence_type}")
 
-    if int(edges.shape[0]) < pool_size:
-        raise ValueError(f"Only {int(edges.shape[0])} candidate edges are available; requested pool_size={pool_size}.")
-    return edges[:pool_size].detach().clone().to(device=state.data.edge_index.device, dtype=torch.long)
+    available_edges = int(edges.shape[0])
+    min_edges = pool_size if min_edges is None else int(min_edges)
+    if available_edges < min_edges:
+        raise ValueError(f"Only {available_edges} candidate edges are available; requested at least {min_edges}.")
+    return edges[: min(pool_size, available_edges)].detach().clone().to(device=state.data.edge_index.device, dtype=torch.long)
 
 
 def select_edge_indices(
