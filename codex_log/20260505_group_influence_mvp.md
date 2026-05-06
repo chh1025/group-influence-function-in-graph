@@ -569,3 +569,62 @@ A=-0.0002951622 H=-0.0001910656 E=-0.00019023685 C_ind=-0.00019023717
 abs_error_H=0.00010409660
 abs_error_C_ind=0.00010492503
 ```
+
+## Output-Space Long Grid Tmux Run
+
+Launched on 2026-05-06 14:24 KST.
+
+Tmux session:
+
+```text
+group_inf_output_long_20260506_142428
+```
+
+Run root:
+
+```text
+results/group_influence_output_long/20260506_142428
+```
+
+Grid:
+
+```text
+datasets: cora_public,citeseer_public,pubmed_public,texas,cornell,chameleon,squirrel
+models: GCN,GAT
+layers: 2,4
+candidate_types: random,top_abs,mixed
+feature_types: cheap,logits_delta
+clustering_methods: cheap_kmeans,random
+num_candidates: 200
+pool_size: 500
+num_clusters: 5
+output_node_scope: eval
+output_pca_dim: 32
+lissa_iter: 300
+pbrf_epochs: 5
+gpus: 0,1,2,3
+```
+
+Planned work:
+
+```text
+candidate jobs: 84
+aggregation runs: 336
+```
+
+Initial health check:
+
+```text
+candidate dirs: 4 / 84
+clustering dirs: 7 / 336
+aggregation dirs: 4 / 336
+tmux workers alive: 4 / 4
+errors in worker logs: none observed
+```
+
+Useful commands:
+
+```bash
+tmux attach -t group_inf_output_long_20260506_142428
+tail -f results/group_influence_output_long/20260506_142428/logs/worker_0.log
+```
