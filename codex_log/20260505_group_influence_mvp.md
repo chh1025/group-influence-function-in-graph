@@ -483,6 +483,29 @@ tmux workers alive: 4 / 4
 errors in worker logs: none observed
 ```
 
+Resume note:
+
+The first launch exposed a scalar conversion bug in `baseline_api._scalar` when a cluster returned an integer zero tensor. Fixed by casting non-floating tensors to float before averaging.
+
+Also updated the launcher to resume by completion files instead of directory existence:
+
+```text
+candidate_edges.pt
+cluster_labels.pt
+aggregation_result.csv
+```
+
+Relaunched with the same run stamp/session after the fix:
+
+```text
+session: group_inf_output_long_20260506_142428
+candidate dirs complete: 5 / 84
+clustering dirs complete: 17 / 336
+aggregation dirs complete: 13 / 336
+tmux workers alive: 4 / 4
+errors in fresh worker logs: none observed
+```
+
 Useful commands:
 
 ```bash
