@@ -785,3 +785,15 @@ Status command:
 RUN_STAMP=<stamp> SESSION_NAME=group_inf_seq_long_<stamp> \
 bash run_group_influence_sequential_existing.sh status
 ```
+
+Launched long run:
+
+```text
+session=group_inf_seq_long_20260506_180948
+run_root=results/group_influence_sequential_existing/20260506_180948
+source_stamp=20260506_142428
+total_sequential_runs=336
+order_policies=small_abs_cluster_influence_first
+gpu_ids=0,1,2,3
+initial status: done=2/336, worker_done=0/4, errors=none-observed
+```
