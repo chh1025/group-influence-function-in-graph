@@ -712,3 +712,76 @@ cornell: random clustering has surprisingly strong C_ind cases; logits_delta kme
 chameleon/pubmed/squirrel: errors are very small; E is usually strongest.
 citeseer_public: H/E dominate; C_ind rarely wins.
 ```
+
+## 2026-05-06 Phase 6: sequential cluster aggregation
+
+Motivation:
+
+```text
+Independent cluster aggregation C_ind estimates every cluster on the original graph.
+The next check is C_seq: estimate a cluster, apply that cluster's edge edits to the
+working graph, then estimate the next cluster on the updated graph.
+```
+
+Implementation:
+
+```text
+src/group_influence/aggregation.py
+  - added compute_cluster_sequential_graph_only
+  - supports cluster_id, random, cluster_size_asc,
+    small_abs_cluster_influence_first, large_abs_cluster_influence_first
+
+experiments/group_influence/run_sequential_aggregation.py
+  - reuses existing candidate/clustering artifacts
+  - reuses baseline aggregation_result.json for A/H/E/C_ind and PBRF
+  - writes sequential_result.csv/json and per-step CSVs
+
+run_group_influence_sequential_existing.sh
+  - launches C_seq over existing aggregation runs in tmux
+  - round-robin workers over GPU_IDS
+  - default source stamp: 20260506_142428
+  - default order policy: small_abs_cluster_influence_first
+```
+
+Validation:
+
+```text
+bash -n run_group_influence_sequential_existing.sh
+python -m py_compile src/group_influence/__init__.py \
+  src/group_influence/aggregation.py \
+  experiments/group_influence/run_sequential_aggregation.py
+git diff --check
+```
+
+Smoke run:
+
+```text
+results/group_influence/sequential_aggregation/smoke_top_abs_4_logits_delta_kmeans2_seq_pbrf1
+
+A=-0.0002951622
+H=-0.0001910656
+E=-0.0001902369
+C_ind=-0.0001902372
+C_seq_cluster_id=-0.0001903239
+C_seq_small_abs_cluster_influence_first=-0.0001903516
+C_seq_large_abs_cluster_influence_first=-0.0001903236
+
+best_seq=small_abs_cluster_influence_first
+abs_error_C_ind=0.0001049250
+abs_error_C_seq_small_abs_cluster_influence_first=0.0001048106
+```
+
+Planned long run:
+
+```bash
+ORDER_POLICIES=small_abs_cluster_influence_first \
+GPU_IDS=0,1,2,3 \
+bash run_group_influence_sequential_existing.sh launch
+```
+
+Status command:
+
+```bash
+RUN_STAMP=<stamp> SESSION_NAME=group_inf_seq_long_<stamp> \
+bash run_group_influence_sequential_existing.sh status
+```

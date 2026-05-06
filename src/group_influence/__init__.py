@@ -7,7 +7,7 @@ from .baseline_api import (
     compute_heo_oneshot,
     compute_single_edge_sum,
 )
-from .aggregation import compute_independent_cluster_sum
+from .aggregation import compute_cluster_sequential_graph_only, compute_independent_cluster_sum
 from .candidates import build_candidate_set
 from .clustering import cluster_features, summarize_clusters
 from .features import build_cheap_edge_features, build_output_delta_features, standardize_features
@@ -23,6 +23,7 @@ __all__ = [
     "cluster_features",
     "compute_actual_pbrf",
     "compute_heo_oneshot",
+    "compute_cluster_sequential_graph_only",
     "compute_independent_cluster_sum",
     "compute_single_edge_sum",
     "standardize_features",
