@@ -10,13 +10,14 @@ from .baseline_api import (
 from .aggregation import compute_independent_cluster_sum
 from .candidates import build_candidate_set
 from .clustering import cluster_features, summarize_clusters
-from .features import build_cheap_edge_features, standardize_features
+from .features import build_cheap_edge_features, build_output_delta_features, standardize_features
 
 __all__ = [
     "BaselineState",
     "build_cheap_edge_features",
     "build_candidate_set",
     "build_influence_module",
+    "build_output_delta_features",
     "build_random_edge_set",
     "build_state",
     "cluster_features",

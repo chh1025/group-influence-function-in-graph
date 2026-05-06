@@ -12,10 +12,13 @@ DATASETS="${DATASETS:-cora_public,citeseer_public,texas,cornell}"
 MODELS="${MODELS:-GCN}"
 LAYERS="${LAYERS:-2}"
 CANDIDATE_TYPES="${CANDIDATE_TYPES:-random,top_abs,mixed}"
+FEATURE_TYPES="${FEATURE_TYPES:-cheap}"
 CLUSTERING_METHODS="${CLUSTERING_METHODS:-cheap_kmeans,random}"
 NUM_CANDIDATES="${NUM_CANDIDATES:-100}"
 POOL_SIZE="${POOL_SIZE:-200}"
 NUM_CLUSTERS="${NUM_CLUSTERS:-5}"
+OUTPUT_NODE_SCOPE="${OUTPUT_NODE_SCOPE:-eval}"
+OUTPUT_PCA_DIM="${OUTPUT_PCA_DIM:-32}"
 SEED="${SEED:-0}"
 EVAL_METRIC="${EVAL_METRIC:-mean_validation_loss}"
 HESSIAN_TYPE="${HESSIAN_TYPE:-GNH}"
@@ -104,47 +107,60 @@ run_candidate_job() {
       --run-id "$candidate_run_id"
     )
     if [[ "$candidate_type" == "mixed" || "$candidate_type" == "top_positive_negative" ]]; then
-      candidate_args+=(--mixed-positive-count 50 --mixed-negative-count 50)
+      local mixed_positive_count mixed_negative_count
+      mixed_positive_count=$(( NUM_CANDIDATES / 2 ))
+      mixed_negative_count=$(( NUM_CANDIDATES - mixed_positive_count ))
+      candidate_args+=(--mixed-positive-count "$mixed_positive_count" --mixed-negative-count "$mixed_negative_count")
     fi
     python experiments/group_influence/build_candidate_edges.py "${candidate_args[@]}"
   else
     echo "[job ${job_index}] reuse candidate_dir=${candidate_dir}"
   fi
 
+  IFS=',' read -r -a FEATURE_ARRAY <<< "$FEATURE_TYPES"
   IFS=',' read -r -a CLUSTER_ARRAY <<< "$CLUSTERING_METHODS"
-  for clustering_method in "${CLUSTER_ARRAY[@]}"; do
-    local cluster_id cluster_run_id cluster_dir agg_run_id agg_args
-    cluster_id="$(safe_id "$clustering_method")"
-    cluster_run_id="${base_id}_${cluster_id}_k${NUM_CLUSTERS}"
-    cluster_dir="${CACHE_ROOT}/feature_clustering/${cluster_run_id}"
-    if [[ ! -d "$cluster_dir" ]]; then
-      python experiments/group_influence/run_feature_clustering.py \
-        --candidate-dir "$candidate_dir" \
-        --clustering-method "$clustering_method" \
-        --num-clusters "$NUM_CLUSTERS" \
-        --run-id "$cluster_run_id" \
-        --cache-root "$CACHE_ROOT"
-    else
-      echo "[job ${job_index}] reuse clustering_dir=${cluster_dir}"
-    fi
+  for feature_type in "${FEATURE_ARRAY[@]}"; do
+    for clustering_method in "${CLUSTER_ARRAY[@]}"; do
+      local feature_id cluster_id cluster_run_id cluster_dir agg_run_id agg_args
+      feature_id="$(safe_id "$feature_type")"
+      cluster_id="$(safe_id "$clustering_method")"
+      cluster_run_id="${base_id}_${feature_id}_${cluster_id}_k${NUM_CLUSTERS}"
+      cluster_dir="${CACHE_ROOT}/feature_clustering/${cluster_run_id}"
+      if [[ ! -d "$cluster_dir" ]]; then
+        cluster_args=(
+          --candidate-dir "$candidate_dir"
+          --feature-type "$feature_type"
+          --clustering-method "$clustering_method"
+          --num-clusters "$NUM_CLUSTERS"
+          --run-id "$cluster_run_id"
+          --cache-root "$CACHE_ROOT"
+        )
+        if [[ "$feature_type" == "logits_delta" ]]; then
+          cluster_args+=(--output-node-scope "$OUTPUT_NODE_SCOPE" --output-pca-dim "$OUTPUT_PCA_DIM")
+        fi
+        python experiments/group_influence/run_feature_clustering.py "${cluster_args[@]}"
+      else
+        echo "[job ${job_index}] reuse clustering_dir=${cluster_dir}"
+      fi
 
-    agg_run_id="${cluster_run_id}_cind_pbrf${PBRF_EPOCHS}"
-    agg_args=(
-      --candidate-dir "$candidate_dir"
-      --clustering-dir "$cluster_dir"
-      --aggregation-method independent_cluster_sum
-      --pbrf-epochs "$PBRF_EPOCHS"
-      --cache-root "$CACHE_ROOT"
-      --run-id "$agg_run_id"
-    )
-    if [[ "$SKIP_PBRF" == "1" ]]; then
-      agg_args+=(--skip-pbrf)
-    fi
-    if [[ ! -d "${CACHE_ROOT}/aggregation/${agg_run_id}" ]]; then
-      python experiments/group_influence/run_aggregation.py "${agg_args[@]}"
-    else
-      echo "[job ${job_index}] reuse aggregation_dir=${CACHE_ROOT}/aggregation/${agg_run_id}"
-    fi
+      agg_run_id="${cluster_run_id}_cind_pbrf${PBRF_EPOCHS}"
+      agg_args=(
+        --candidate-dir "$candidate_dir"
+        --clustering-dir "$cluster_dir"
+        --aggregation-method independent_cluster_sum
+        --pbrf-epochs "$PBRF_EPOCHS"
+        --cache-root "$CACHE_ROOT"
+        --run-id "$agg_run_id"
+      )
+      if [[ "$SKIP_PBRF" == "1" ]]; then
+        agg_args+=(--skip-pbrf)
+      fi
+      if [[ ! -d "${CACHE_ROOT}/aggregation/${agg_run_id}" ]]; then
+        python experiments/group_influence/run_aggregation.py "${agg_args[@]}"
+      else
+        echo "[job ${job_index}] reuse aggregation_dir=${CACHE_ROOT}/aggregation/${agg_run_id}"
+      fi
+    done
   done
   echo "[job ${job_index}] done"
 }
@@ -188,10 +204,13 @@ launch_tmux() {
     echo "models=${MODELS}"
     echo "layers=${LAYERS}"
     echo "candidate_types=${CANDIDATE_TYPES}"
+    echo "feature_types=${FEATURE_TYPES}"
     echo "clustering_methods=${CLUSTERING_METHODS}"
     echo "num_candidates=${NUM_CANDIDATES}"
     echo "pool_size=${POOL_SIZE}"
     echo "num_clusters=${NUM_CLUSTERS}"
+    echo "output_node_scope=${OUTPUT_NODE_SCOPE}"
+    echo "output_pca_dim=${OUTPUT_PCA_DIM}"
     echo "pbrf_epochs=${PBRF_EPOCHS}"
     echo "skip_pbrf=${SKIP_PBRF}"
     echo "total_candidate_jobs=${#JOBS[@]}"
@@ -205,7 +224,7 @@ launch_tmux() {
   local worker_id gpu_id command
   for worker_id in $(seq 0 $((NUM_WORKERS - 1))); do
     gpu_id="${GPU_ARRAY[$((worker_id % ${#GPU_ARRAY[@]}))]}"
-    command="RUN_STAMP='${RUN_STAMP}' SESSION_NAME='${SESSION_NAME}' GPU_IDS='${GPU_IDS}' NUM_WORKERS='${NUM_WORKERS}' DATASETS='${DATASETS}' MODELS='${MODELS}' LAYERS='${LAYERS}' CANDIDATE_TYPES='${CANDIDATE_TYPES}' CLUSTERING_METHODS='${CLUSTERING_METHODS}' NUM_CANDIDATES='${NUM_CANDIDATES}' POOL_SIZE='${POOL_SIZE}' NUM_CLUSTERS='${NUM_CLUSTERS}' SEED='${SEED}' EVAL_METRIC='${EVAL_METRIC}' HESSIAN_TYPE='${HESSIAN_TYPE}' LR='${LR}' HIDDEN_DIM='${HIDDEN_DIM}' EPOCHS='${EPOCHS}' WEIGHT_DECAY='${WEIGHT_DECAY}' DAMP='${DAMP}' SCALE='${SCALE}' LISSA_ITER='${LISSA_ITER}' PBRF_EPOCHS='${PBRF_EPOCHS}' PBRF_WEIGHT_DECAY='${PBRF_WEIGHT_DECAY}' NUM_HEADS='${NUM_HEADS}' CACHE_ROOT='${CACHE_ROOT}' RUN_ROOT='${RUN_ROOT}' SKIP_PBRF='${SKIP_PBRF}' bash '${SCRIPT_DIR}/run_group_influence_mvp_small.sh' worker '${worker_id}' '${gpu_id}' 2>&1 | tee '${RUN_ROOT}/logs/worker_${worker_id}.log'"
+    command="RUN_STAMP='${RUN_STAMP}' SESSION_NAME='${SESSION_NAME}' GPU_IDS='${GPU_IDS}' NUM_WORKERS='${NUM_WORKERS}' DATASETS='${DATASETS}' MODELS='${MODELS}' LAYERS='${LAYERS}' CANDIDATE_TYPES='${CANDIDATE_TYPES}' FEATURE_TYPES='${FEATURE_TYPES}' CLUSTERING_METHODS='${CLUSTERING_METHODS}' NUM_CANDIDATES='${NUM_CANDIDATES}' POOL_SIZE='${POOL_SIZE}' NUM_CLUSTERS='${NUM_CLUSTERS}' OUTPUT_NODE_SCOPE='${OUTPUT_NODE_SCOPE}' OUTPUT_PCA_DIM='${OUTPUT_PCA_DIM}' SEED='${SEED}' EVAL_METRIC='${EVAL_METRIC}' HESSIAN_TYPE='${HESSIAN_TYPE}' LR='${LR}' HIDDEN_DIM='${HIDDEN_DIM}' EPOCHS='${EPOCHS}' WEIGHT_DECAY='${WEIGHT_DECAY}' DAMP='${DAMP}' SCALE='${SCALE}' LISSA_ITER='${LISSA_ITER}' PBRF_EPOCHS='${PBRF_EPOCHS}' PBRF_WEIGHT_DECAY='${PBRF_WEIGHT_DECAY}' NUM_HEADS='${NUM_HEADS}' CACHE_ROOT='${CACHE_ROOT}' RUN_ROOT='${RUN_ROOT}' SKIP_PBRF='${SKIP_PBRF}' bash '${SCRIPT_DIR}/run_group_influence_mvp_small.sh' worker '${worker_id}' '${gpu_id}' 2>&1 | tee '${RUN_ROOT}/logs/worker_${worker_id}.log'"
     if [[ "$worker_id" == "0" ]]; then
       tmux new-session -d -s "$SESSION_NAME" -n "gpu${gpu_id}" "$command"
     else
@@ -218,7 +237,7 @@ launch_tmux() {
   echo "session=${SESSION_NAME}"
   echo "run_root=${RUN_ROOT}"
   echo "total_candidate_jobs=${#JOBS[@]}"
-  echo "total_aggregation_runs=$(( ${#JOBS[@]} * $(awk -F, '{print NF}' <<< "$CLUSTERING_METHODS") ))"
+  echo "total_aggregation_runs=$(( ${#JOBS[@]} * $(awk -F, '{print NF}' <<< "$FEATURE_TYPES") * $(awk -F, '{print NF}' <<< "$CLUSTERING_METHODS") ))"
   echo "attach: tmux attach -t ${SESSION_NAME}"
 }
 

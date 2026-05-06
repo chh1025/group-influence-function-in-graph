@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 
 from src.group_influence.baseline_api import compute_single_edge_sum
+from src.graph_utils import add_edge, remove_edge
 
 
 def build_cheap_edge_features(
@@ -102,6 +103,103 @@ def standardize_features(features, eps=1e-12):
     }
 
 
+def build_output_delta_features(
+    state,
+    candidate_edges,
+    influence_type="edge_removal",
+    node_scope="eval",
+    pca_dim=32,
+):
+    edge_tensor = _as_edge_tensor(candidate_edges).to(state.data.edge_index.device)
+    node_indices = _output_node_indices(state, node_scope=node_scope)
+
+    was_training = state.model.training
+    state.model.eval()
+    raw_rows = []
+    with torch.no_grad():
+        base_output = state.model(state.data)[node_indices].detach()
+        for edge in edge_tensor:
+            edited_data = _apply_single_edge_edit(state.data, edge, influence_type)
+            edited_output = state.model(edited_data)[node_indices].detach()
+            raw_rows.append((edited_output - base_output).reshape(-1).detach().cpu())
+    if was_training:
+        state.model.train()
+
+    raw_features = torch.stack(raw_rows, dim=0).float()
+    projected = pca_project_features(raw_features, pca_dim=pca_dim)
+    features = projected["features"]
+    feature_names = [f"output_pc_{idx:03d}" for idx in range(features.shape[1])]
+
+    summary_values = _output_delta_summary(raw_features)
+    feature_rows = []
+    for idx, edge in enumerate(edge_tensor.detach().cpu().tolist()):
+        row = {
+            "candidate_edge_id": idx,
+            "u": int(edge[0]),
+            "v": int(edge[1]),
+            "output_delta_l2": float(summary_values["l2"][idx]),
+            "output_delta_linf": float(summary_values["linf"][idx]),
+            "output_delta_mean_abs": float(summary_values["mean_abs"][idx]),
+        }
+        for name, value in zip(feature_names, features[idx].tolist()):
+            row[name] = float(value)
+        feature_rows.append(row)
+
+    return {
+        "feature_type": "logits_delta",
+        "feature_names": feature_names,
+        "features": features,
+        "feature_rows": feature_rows,
+        "raw_features": raw_features,
+        "node_scope": node_scope,
+        "node_count": int(node_indices.shape[0]),
+        "raw_feature_dim": int(raw_features.shape[1]),
+        "pca": projected,
+    }
+
+
+def pca_project_features(features, pca_dim=32):
+    feature_tensor = torch.as_tensor(features, dtype=torch.float32).detach().cpu()
+    requested_dim = int(pca_dim)
+    if requested_dim <= 0:
+        return {
+            "features": feature_tensor,
+            "mean": torch.zeros(feature_tensor.shape[1], dtype=feature_tensor.dtype),
+            "components": torch.empty((0, feature_tensor.shape[1]), dtype=feature_tensor.dtype),
+            "singular_values": torch.empty(0, dtype=feature_tensor.dtype),
+            "explained_variance_ratio": torch.empty(0, dtype=feature_tensor.dtype),
+            "used_pca": False,
+        }
+
+    max_dim = min(requested_dim, feature_tensor.shape[0] - 1, feature_tensor.shape[1])
+    if max_dim <= 0:
+        return {
+            "features": feature_tensor,
+            "mean": torch.zeros(feature_tensor.shape[1], dtype=feature_tensor.dtype),
+            "components": torch.empty((0, feature_tensor.shape[1]), dtype=feature_tensor.dtype),
+            "singular_values": torch.empty(0, dtype=feature_tensor.dtype),
+            "explained_variance_ratio": torch.empty(0, dtype=feature_tensor.dtype),
+            "used_pca": False,
+        }
+
+    mean = feature_tensor.mean(dim=0, keepdim=True)
+    centered = feature_tensor - mean
+    _, singular_values, vh = torch.linalg.svd(centered, full_matrices=False)
+    components = vh[:max_dim].contiguous()
+    projected = centered @ components.T
+    variance = singular_values.square()
+    total_variance = variance.sum().clamp_min(1e-12)
+    explained = variance[:max_dim] / total_variance
+    return {
+        "features": projected,
+        "mean": mean.squeeze(0),
+        "components": components,
+        "singular_values": singular_values[:max_dim],
+        "explained_variance_ratio": explained,
+        "used_pca": True,
+    }
+
+
 def align_score_rows(candidate_edges, score_rows, state, influence_type="edge_removal", influence_module=None):
     edge_tensor = _as_edge_tensor(candidate_edges)
     if score_rows is None:
@@ -171,6 +269,34 @@ def _node_representations(state):
     if was_training:
         state.model.train()
     return reps
+
+
+def _apply_single_edge_edit(data, edge, influence_type):
+    edge = torch.as_tensor(edge, device=data.edge_index.device, dtype=torch.long)
+    if influence_type == "edge_removal":
+        return remove_edge(data, edge)
+    if influence_type == "edge_insertion":
+        return add_edge(data, edge)
+    raise ValueError(f"Unsupported influence_type: {influence_type}")
+
+
+def _output_node_indices(state, node_scope="eval"):
+    node_scope = str(node_scope).strip().lower()
+    if node_scope == "all":
+        return torch.arange(state.data.num_nodes, device=state.data.edge_index.device)
+    if node_scope == "eval":
+        return torch.as_tensor(state.eval_node_idxs, device=state.data.edge_index.device, dtype=torch.long)
+    if node_scope == "val_mask" and hasattr(state.data, "val_mask"):
+        return torch.as_tensor(state.data.val_mask, device=state.data.edge_index.device).nonzero(as_tuple=False).view(-1)
+    raise ValueError(f"Unsupported node_scope: {node_scope}")
+
+
+def _output_delta_summary(raw_features):
+    return {
+        "l2": torch.linalg.vector_norm(raw_features, dim=1),
+        "linf": raw_features.abs().max(dim=1).values,
+        "mean_abs": raw_features.abs().mean(dim=1),
+    }
 
 
 def _directed_degrees(edge_index, num_nodes):

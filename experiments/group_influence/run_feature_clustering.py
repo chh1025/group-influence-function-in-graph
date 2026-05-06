@@ -18,7 +18,12 @@ from main import _create_parser
 from src.group_influence import build_state
 from src.group_influence.cache import make_run_dir, save_csv, save_json, save_tensor
 from src.group_influence.clustering import cluster_features, summarize_clusters
-from src.group_influence.features import build_cheap_edge_features, standardize_features
+from src.group_influence.features import (
+    align_score_rows,
+    build_cheap_edge_features,
+    build_output_delta_features,
+    standardize_features,
+)
 
 
 def main():
@@ -36,12 +41,7 @@ def main():
     candidate_edges = torch.load(candidate_edges_path, map_location="cpu", weights_only=True)
     score_rows = _read_csv(candidate_scores_path)
 
-    feature_result = build_cheap_edge_features(
-        state=state,
-        candidate_edges=candidate_edges,
-        score_rows=score_rows,
-        influence_type=cli.element_type,
-    )
+    feature_result = _build_features(cli, state, candidate_edges, score_rows)
     normalized = standardize_features(feature_result["features"])
     cluster_result = cluster_features(
         features=normalized["features"],
@@ -51,11 +51,17 @@ def main():
         max_iter=cli.max_iter,
     )
     labels = cluster_result["labels"]
-    influence_idx = feature_result["feature_names"].index("single_edge_influence")
+    single_edge_influences = _single_edge_influences(
+        feature_result=feature_result,
+        state=state,
+        candidate_edges=candidate_edges,
+        score_rows=score_rows,
+        influence_type=cli.element_type,
+    )
     cluster_summary = summarize_clusters(
         labels=labels,
         features=normalized["features"],
-        influences=feature_result["features"][:, influence_idx],
+        influences=single_edge_influences,
     )
     assignment_rows = _assignment_rows(feature_result["feature_rows"], labels)
 
@@ -67,8 +73,10 @@ def main():
         "candidate_scores_path": candidate_scores_path,
         "candidate_metadata": candidate_metadata,
         "feature_names": feature_result["feature_names"],
+        "feature_type": feature_result["feature_type"],
         "clustering_method": cluster_result["method"],
         "num_iter": cluster_result["num_iter"],
+        "feature_metadata": _feature_metadata(feature_result),
     }
     save_json(str(run_dir / "metadata.json"), metadata)
     save_json(
@@ -79,14 +87,22 @@ def main():
         },
     )
     save_tensor(str(run_dir / "candidate_edges.pt"), torch.as_tensor(candidate_edges, dtype=torch.long))
-    save_tensor(str(run_dir / "cheap_features.pt"), feature_result["features"])
+    save_tensor(str(run_dir / "features.pt"), feature_result["features"])
+    if feature_result["feature_type"] == "cheap":
+        save_tensor(str(run_dir / "cheap_features.pt"), feature_result["features"])
+    if feature_result["feature_type"] == "logits_delta":
+        save_tensor(str(run_dir / "output_delta_features.pt"), feature_result["features"])
+        save_tensor(str(run_dir / "output_delta_raw_features.pt"), feature_result["raw_features"])
+        if feature_result["pca"]["used_pca"]:
+            save_tensor(str(run_dir / "output_delta_pca_components.pt"), feature_result["pca"]["components"])
+            save_tensor(str(run_dir / "output_delta_pca_mean.pt"), feature_result["pca"]["mean"])
     save_tensor(str(run_dir / "normalized_features.pt"), normalized["features"])
     save_tensor(str(run_dir / "cluster_labels.pt"), labels)
     save_tensor(str(run_dir / "cluster_centroids.pt"), cluster_result["centroids"])
     save_csv(
         str(run_dir / "cluster_assignments.csv"),
         assignment_rows,
-        fieldnames=["candidate_edge_id", "u", "v", "cluster_id"] + feature_result["feature_names"],
+        fieldnames=_assignment_fieldnames(feature_result),
     )
     save_csv(
         str(run_dir / "cluster_summary.csv"),
@@ -130,7 +146,9 @@ def _parse_args():
     parser.add_argument("--hidden-dim", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--element-type", type=str, default=None, choices=["edge_removal", "edge_insertion"])
-    parser.add_argument("--feature-type", type=str, default="cheap", choices=["cheap"])
+    parser.add_argument("--feature-type", type=str, default="cheap", choices=["cheap", "logits_delta"])
+    parser.add_argument("--output-node-scope", type=str, default="eval", choices=["eval", "all", "val_mask"])
+    parser.add_argument("--output-pca-dim", type=int, default=32)
     parser.add_argument("--clustering-method", type=str, default="cheap_kmeans", choices=["cheap_kmeans", "kmeans", "random"])
     parser.add_argument("--num-clusters", type=int, default=2)
     parser.add_argument("--max-iter", type=int, default=100)
@@ -190,6 +208,8 @@ def _config_dict(cli, experiment_args, candidate_metadata, candidate_edges_path,
         "seed": int(cli.seed),
         "element_type": cli.element_type,
         "feature_type": cli.feature_type,
+        "output_node_scope": cli.output_node_scope,
+        "output_pca_dim": int(cli.output_pca_dim),
         "clustering_method": cli.clustering_method,
         "num_clusters": int(cli.num_clusters),
         "max_iter": int(cli.max_iter),
@@ -263,6 +283,61 @@ def _read_csv(path):
         return None
     with open(path, "r", encoding="utf-8") as f:
         return list(csv.DictReader(f))
+
+
+def _build_features(cli, state, candidate_edges, score_rows):
+    if cli.feature_type == "cheap":
+        return build_cheap_edge_features(
+            state=state,
+            candidate_edges=candidate_edges,
+            score_rows=score_rows,
+            influence_type=cli.element_type,
+        )
+    if cli.feature_type == "logits_delta":
+        return build_output_delta_features(
+            state=state,
+            candidate_edges=candidate_edges,
+            influence_type=cli.element_type,
+            node_scope=cli.output_node_scope,
+            pca_dim=cli.output_pca_dim,
+        )
+    raise ValueError(f"Unsupported feature_type: {cli.feature_type}")
+
+
+def _feature_metadata(feature_result):
+    if feature_result["feature_type"] != "logits_delta":
+        return {}
+    return {
+        "node_scope": feature_result["node_scope"],
+        "node_count": feature_result["node_count"],
+        "raw_feature_dim": feature_result["raw_feature_dim"],
+        "pca_dim": int(feature_result["features"].shape[1]),
+        "used_pca": bool(feature_result["pca"]["used_pca"]),
+        "explained_variance_ratio_sum": float(feature_result["pca"]["explained_variance_ratio"].sum().item())
+        if feature_result["pca"]["used_pca"]
+        else None,
+    }
+
+
+def _single_edge_influences(feature_result, state, candidate_edges, score_rows, influence_type):
+    if "single_edge_influence" in feature_result["feature_names"]:
+        influence_idx = feature_result["feature_names"].index("single_edge_influence")
+        return feature_result["features"][:, influence_idx]
+    aligned_rows = align_score_rows(
+        candidate_edges=candidate_edges,
+        score_rows=score_rows,
+        state=state,
+        influence_type=influence_type,
+    )
+    return torch.tensor([float(row["single_edge_influence"]) for row in aligned_rows], dtype=torch.float32)
+
+
+def _assignment_fieldnames(feature_result):
+    fields = ["candidate_edge_id", "u", "v", "cluster_id"]
+    if feature_result["feature_type"] == "logits_delta":
+        fields.extend(["output_delta_l2", "output_delta_linf", "output_delta_mean_abs"])
+    fields.extend(feature_result["feature_names"])
+    return fields
 
 
 def _assignment_rows(feature_rows, labels):

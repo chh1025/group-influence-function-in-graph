@@ -525,3 +525,47 @@ Interpretation:
 - `C_ind` is not yet competitive with the best of `H` and `E` overall.
 - The promising cases are mostly `cora_public`, where `C_ind` wins 3 of 6 runs.
 - `texas` shows large regressions for cluster aggregation, especially on `top_abs` and `mixed`.
+
+## Phase 4 Output-Space Clustering Setup
+
+Next experiment target:
+
+```text
+feature_type: logits_delta
+distance/clustering: PCA-reduced Euclidean k-means
+aggregation: independent_cluster_sum
+```
+
+Implementation:
+
+- `src/group_influence/features.py` now supports `build_output_delta_features`.
+- `experiments/group_influence/run_feature_clustering.py` supports `--feature-type logits_delta`.
+- `run_group_influence_mvp_small.sh` now supports `FEATURE_TYPES=cheap,logits_delta`.
+
+Feature construction:
+
+```text
+For each candidate edge e:
+  1. apply the single edge edit to the graph with fixed model parameters
+  2. compute logits_delta = logits(G_e) - logits(G)
+  3. flatten over selected nodes/classes
+  4. reduce with PCA to --output-pca-dim, default 32
+```
+
+Smoke:
+
+```text
+results/group_influence/feature_clustering/smoke_top_abs_4_logits_delta_kmeans2
+feature_type=logits_delta
+raw_feature_dim=18956
+explained_variance_ratio_sum=0.8414692878723145
+```
+
+Actual PBRF smoke:
+
+```text
+results/group_influence/aggregation/smoke_top_abs_4_logits_delta_kmeans2_independent_pbrf1
+A=-0.0002951622 H=-0.0001910656 E=-0.00019023685 C_ind=-0.00019023717
+abs_error_H=0.00010409660
+abs_error_C_ind=0.00010492503
+```
