@@ -156,3 +156,56 @@ Initial worker checks:
 - `run_0004`: `metis`, `GCN`, layer `2`, `cornell`, ratio `20`
 
 The scheduler launched four workers concurrently and will continue assigning new runs to free GPUs from the planned small-profile run queue.
+
+## Small 20% Drop Partition Baseline Results
+
+Checked on 2026-05-06 12:05 KST.
+
+Output:
+
+```text
+results/partition_compare_summary_small_drop20_20260505_015921.csv
+```
+
+Completion:
+
+- total runs: `48`
+- status `ok`: `48`
+- failed: `0`
+
+Overall interpretation:
+
+- The run completed successfully.
+- This default `candidate_local_affinity` partition baseline does not show a clear aggregate improvement over the one-shot baseline.
+- The baseline and clusterwise estimates are very close in many runs, and clusterwise is often slightly worse by MAE.
+- There is one unstable outlier configuration: `cornell / GAT / layer 4`, with MAE around `41531` for all three partition methods. Result dirs include `nan_nan_0.61_*`, so this should be treated as a PBRF/model instability case before drawing scientific conclusions.
+
+Aggregate excluding the outlier rows (`baseline_pbrf_mae < 100` and `cluster_pbrf_mae < 100`):
+
+```text
+method      n   wins  baseline_mae  cluster_mae  mean_delta(cluster-baseline)
+metis      15   5     0.099814      0.100254     +0.000439
+spectral   15   7     0.099814      0.100196     +0.000382
+local_ppr  15   3     0.099814      0.102639     +0.002825
+```
+
+Notes:
+
+- `spectral` has the most MAE wins (`7/15`) after excluding the outlier, but the mean MAE is still slightly worse than baseline.
+- `metis` is closest to baseline on mean MAE among the three methods.
+- `local_ppr` is the weakest of the three by mean MAE in this setting.
+- Baseline sign accuracy and cluster sign accuracy are almost unchanged overall.
+
+Best meaningful improvements:
+
+- `texas / GAT / layer 4`: clusterwise improves MAE by about `0.02-0.024` depending on method.
+- `cornell / GAT / layer 2`: `metis` improves MAE by about `0.0085`.
+
+Worst meaningful regressions:
+
+- `texas / GAT / layer 2`: clusterwise is worse, especially `local_ppr` and `spectral`.
+- `texas / GCN / layer 2`: `metis` and `local_ppr` regress noticeably.
+
+Next recommendation:
+
+Use these results as a completed sanity baseline, not as evidence that grouping helps. Move to the planned Phase 1/3 influence-feature candidate construction and cheap influence-feature clustering, because this structural partitioning baseline is too weak to validate the influence-geometry hypothesis.
