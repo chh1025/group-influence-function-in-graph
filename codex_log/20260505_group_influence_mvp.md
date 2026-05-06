@@ -209,3 +209,109 @@ Worst meaningful regressions:
 Next recommendation:
 
 Use these results as a completed sanity baseline, not as evidence that grouping helps. Move to the planned Phase 1/3 influence-feature candidate construction and cheap influence-feature clustering, because this structural partitioning baseline is too weak to validate the influence-geometry hypothesis.
+
+## Phase 1 Candidate Edge Construction
+
+Implemented after the structural partition baseline.
+
+Added:
+
+- `src/group_influence/candidates.py`
+- `experiments/group_influence/build_candidate_edges.py`
+
+Supported candidate types:
+
+- `random`
+- `top_abs`
+- `mixed`
+- `top_positive_negative`
+
+Saved outputs per run:
+
+```text
+metadata.json
+edge_pool.pt
+candidate_edges.pt
+candidate_edge_scores.csv
+pool_edge_scores.csv  # for scored pool methods
+```
+
+Smoke checks:
+
+```bash
+python experiments/group_influence/build_candidate_edges.py \
+  --dataset cora_public \
+  --model GCN \
+  --num-layers 2 \
+  --seed 0 \
+  --candidate-type random \
+  --num-candidates 4 \
+  --pool-size 4 \
+  --epochs 1000 \
+  --lissa-iter 100 \
+  --scale 32 \
+  --run-id smoke_random_4
+```
+
+```bash
+python experiments/group_influence/build_candidate_edges.py \
+  --dataset cora_public \
+  --model GCN \
+  --num-layers 2 \
+  --seed 0 \
+  --candidate-type top_abs \
+  --num-candidates 4 \
+  --pool-size 8 \
+  --epochs 1000 \
+  --lissa-iter 100 \
+  --scale 32 \
+  --run-id smoke_top_abs_4_pool8
+```
+
+```bash
+python experiments/group_influence/build_candidate_edges.py \
+  --dataset cora_public \
+  --model GCN \
+  --num-layers 2 \
+  --seed 0 \
+  --candidate-type mixed \
+  --num-candidates 4 \
+  --pool-size 12 \
+  --mixed-positive-count 2 \
+  --mixed-negative-count 2 \
+  --epochs 1000 \
+  --lissa-iter 100 \
+  --scale 32 \
+  --run-id smoke_mixed_2_2_pool12
+```
+
+Also updated `run_baselines.py` to load a saved candidate set:
+
+```bash
+python experiments/group_influence/run_baselines.py \
+  --dataset cora_public \
+  --model GCN \
+  --num-layers 2 \
+  --seed 0 \
+  --candidate-edges-path results/group_influence/candidate_edges/smoke_top_abs_4_pool8/candidate_edges.pt \
+  --candidate-type top_abs \
+  --num-edges 4 \
+  --epochs 1000 \
+  --lissa-iter 100 \
+  --pbrf-epochs 1 \
+  --scale 32 \
+  --skip-pbrf \
+  --run-id smoke_baseline_loaded_top_abs_4
+```
+
+Key smoke result:
+
+```text
+candidate_set=top_abs_4 candidate_edges=4 pool_edges=8
+loaded baseline H(S)=-0.00019106602
+loaded baseline E(S)=-0.00019023675
+```
+
+Next step:
+
+Build Phase 3 cheap influence-feature clustering on top of `candidate_edge_scores.csv`, starting with `cheap_kmeans` and `random` clustering baselines.

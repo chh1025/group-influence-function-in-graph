@@ -3,6 +3,8 @@ import argparse
 import os
 import sys
 
+import torch
+
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib-cache")
 os.environ.setdefault("XDG_CACHE_HOME", "/tmp/.cache")
 
@@ -29,7 +31,11 @@ def main():
     run_dir, config_hash = make_run_dir(cli.cache_root, "baselines", config, run_id=cli.run_id)
 
     state = build_state(experiment_args)
-    edge_set = build_random_edge_set(state, num_edges=cli.num_edges, influence_type=cli.element_type)
+    if cli.candidate_edges_path is None:
+        edge_set = build_random_edge_set(state, num_edges=cli.num_edges, influence_type=cli.element_type)
+    else:
+        edge_set = torch.load(cli.candidate_edges_path, map_location=state.data.edge_index.device, weights_only=True)
+        edge_set = torch.as_tensor(edge_set, device=state.data.edge_index.device, dtype=torch.long)
     influence_module = build_influence_module(state)
 
     heo = compute_heo_oneshot(edge_set, state, influence_type=cli.element_type, influence_module=influence_module)
@@ -84,7 +90,13 @@ def _parse_args():
     parser.add_argument("--hidden-dim", type=int, default=16)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--element-type", type=str, default="edge_removal", choices=["edge_removal", "edge_insertion"])
-    parser.add_argument("--candidate-type", type=str, default="random", choices=["random"])
+    parser.add_argument(
+        "--candidate-type",
+        type=str,
+        default="random",
+        choices=["random", "top_abs", "mixed", "top_positive_negative"],
+    )
+    parser.add_argument("--candidate-edges-path", type=str, default=None)
     parser.add_argument("--num-edges", type=int, default=2)
     parser.add_argument("--eval-metric", type=str, default="mean_validation_loss")
     parser.add_argument("--hessian-type", type=str, default="GNH", choices=["hessian", "GNH"])
@@ -143,6 +155,7 @@ def _config_dict(cli, experiment_args):
         "seed": int(cli.seed),
         "element_type": cli.element_type,
         "candidate_type": cli.candidate_type,
+        "candidate_edges_path": cli.candidate_edges_path,
         "num_edges": int(cli.num_edges),
         "eval_metric": cli.eval_metric,
         "hessian_type": cli.hessian_type,
