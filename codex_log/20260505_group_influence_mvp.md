@@ -315,3 +315,116 @@ loaded baseline E(S)=-0.00019023675
 Next step:
 
 Build Phase 3 cheap influence-feature clustering on top of `candidate_edge_scores.csv`, starting with `cheap_kmeans` and `random` clustering baselines.
+
+## Phase 3/6 Cheap Clustering and Independent Aggregation
+
+Implementation in progress after Phase 1 was committed as:
+
+```text
+5adf25c [Exp] Add group influence candidate builder
+```
+
+Added reusable modules:
+
+- `src/group_influence/features.py`
+- `src/group_influence/clustering.py`
+- `src/group_influence/aggregation.py`
+
+Added scripts:
+
+- `experiments/group_influence/run_feature_clustering.py`
+- `experiments/group_influence/run_aggregation.py`
+
+Cheap feature vector:
+
+```text
+single_edge_influence
+abs_single_edge_influence
+single_edge_parameter_shift
+single_edge_message_passing
+degree_u
+degree_v
+endpoint_logit_cosine
+endpoint_logit_l2
+```
+
+Clustering outputs:
+
+```text
+metadata.json
+clustering_result.json
+cluster_assignments.csv
+cluster_summary.csv
+candidate_edges.pt
+cheap_features.pt
+normalized_features.pt
+cluster_labels.pt
+cluster_centroids.pt
+```
+
+Aggregation outputs:
+
+```text
+metadata.json
+aggregation_result.json
+aggregation_result.csv
+independent_cluster_rows.csv
+candidate_edges.pt
+cluster_labels.pt
+```
+
+Planned smoke command:
+
+```bash
+python experiments/group_influence/run_feature_clustering.py \
+  --candidate-dir results/group_influence/candidate_edges/smoke_top_abs_4_pool8 \
+  --clustering-method cheap_kmeans \
+  --num-clusters 2 \
+  --run-id smoke_top_abs_4_kmeans2
+```
+
+Then:
+
+```bash
+python experiments/group_influence/run_aggregation.py \
+  --candidate-dir results/group_influence/candidate_edges/smoke_top_abs_4_pool8 \
+  --clustering-dir results/group_influence/feature_clustering/smoke_top_abs_4_kmeans2 \
+  --skip-pbrf \
+  --run-id smoke_top_abs_4_kmeans2_independent
+```
+
+Smoke results:
+
+```text
+results/group_influence/feature_clustering/smoke_top_abs_4_kmeans2
+method=cheap_kmeans K=2 total=-0.00019023675 cancel=0.00026383734 sign_purity=0.7500 within_var=1.7815732
+```
+
+```text
+results/group_influence/feature_clustering/smoke_top_abs_4_random2
+method=random K=2 total=-0.00019023675 cancel=0.00036294568 sign_purity=1.0000 within_var=4.3881617
+```
+
+```text
+results/group_influence/baselines/smoke_baseline_loaded_top_abs_4_infer_count
+A(S)=skipped H(S)=-0.00019106554 E(S)=-0.00019023692
+```
+
+```text
+results/group_influence/aggregation/smoke_top_abs_4_kmeans2_independent_infer_count
+A=skipped H=-0.00019106566 E=-0.0001902365 C_ind=-0.00019023687
+```
+
+Actual PBRF smoke with `pbrf_epochs=1`:
+
+```text
+results/group_influence/aggregation/smoke_top_abs_4_kmeans2_independent_pbrf1
+A=-0.0002951622 H=-0.00019106544 E=-0.00019023652 C_ind=-0.00019023681
+abs_error_H=0.00010409676
+abs_error_E=0.00010492568
+abs_error_C_ind=0.00010492539
+```
+
+Implementation note:
+
+`run_baselines.py` and `run_aggregation.py` now infer `num_group_elem` from `candidate_edges.pt` when a saved candidate set is loaded. This keeps PBRF checkpoint/result directories under the correct `Nedges` path.

@@ -26,6 +26,10 @@ from src.group_influence.cache import make_run_dir, save_csv, save_json, save_te
 
 def main():
     cli = _parse_args()
+    loaded_edge_set = None
+    if cli.candidate_edges_path is not None:
+        loaded_edge_set = torch.load(cli.candidate_edges_path, map_location="cpu", weights_only=True)
+        cli.num_edges = int(_as_edge_tensor(loaded_edge_set).shape[0])
     experiment_args = _build_main_args(cli)
     config = _config_dict(cli, experiment_args)
     run_dir, config_hash = make_run_dir(cli.cache_root, "baselines", config, run_id=cli.run_id)
@@ -34,8 +38,7 @@ def main():
     if cli.candidate_edges_path is None:
         edge_set = build_random_edge_set(state, num_edges=cli.num_edges, influence_type=cli.element_type)
     else:
-        edge_set = torch.load(cli.candidate_edges_path, map_location=state.data.edge_index.device, weights_only=True)
-        edge_set = torch.as_tensor(edge_set, device=state.data.edge_index.device, dtype=torch.long)
+        edge_set = torch.as_tensor(loaded_edge_set, device=state.data.edge_index.device, dtype=torch.long)
     influence_module = build_influence_module(state)
 
     heo = compute_heo_oneshot(edge_set, state, influence_type=cli.element_type, influence_module=influence_module)
@@ -201,6 +204,17 @@ def _sign(value):
     if value < 0:
         return -1
     return 0
+
+
+def _as_edge_tensor(edge_set):
+    edge_tensor = torch.as_tensor(edge_set, dtype=torch.long)
+    if edge_tensor.dim() == 1:
+        edge_tensor = edge_tensor.view(1, 2)
+    if edge_tensor.dim() == 3 and edge_tensor.shape[0] == 1:
+        edge_tensor = edge_tensor.squeeze(0)
+    if edge_tensor.dim() != 2 or edge_tensor.shape[1] != 2:
+        raise ValueError("edge_set must have shape [num_edges, 2] or [1, num_edges, 2].")
+    return edge_tensor
 
 
 if __name__ == "__main__":
