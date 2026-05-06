@@ -228,4 +228,7 @@ def _scalar(value):
         if len(value) == 0:
             return 0.0
         return float(torch.as_tensor(value, dtype=torch.float32).detach().cpu().reshape(-1).mean().item())
-    return float(torch.as_tensor(value).detach().cpu().reshape(-1).mean().item())
+    tensor = torch.as_tensor(value).detach().cpu()
+    if not tensor.is_floating_point() and not tensor.is_complex():
+        tensor = tensor.float()
+    return float(tensor.reshape(-1).mean().item())
