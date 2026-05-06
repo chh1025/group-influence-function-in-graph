@@ -81,7 +81,11 @@ run_candidate_job() {
 
   echo "[job ${job_index}] dataset=${dataset} model=${model} layer=${layer} candidate=${candidate_type} gpu=${CUDA_VISIBLE_DEVICES}"
 
-  if [[ ! -d "$candidate_dir" ]]; then
+  if [[ -d "$candidate_dir" && ! -f "${candidate_dir}/candidate_edges.pt" ]]; then
+    echo "[job ${job_index}] remove incomplete candidate_dir=${candidate_dir}"
+    rm -rf "$candidate_dir"
+  fi
+  if [[ ! -f "${candidate_dir}/candidate_edges.pt" ]]; then
     candidate_args=(
       --dataset "$dataset"
       --model "$model"
@@ -126,7 +130,11 @@ run_candidate_job() {
       cluster_id="$(safe_id "$clustering_method")"
       cluster_run_id="${base_id}_${feature_id}_${cluster_id}_k${NUM_CLUSTERS}"
       cluster_dir="${CACHE_ROOT}/feature_clustering/${cluster_run_id}"
-      if [[ ! -d "$cluster_dir" ]]; then
+      if [[ -d "$cluster_dir" && ! -f "${cluster_dir}/cluster_labels.pt" ]]; then
+        echo "[job ${job_index}] remove incomplete clustering_dir=${cluster_dir}"
+        rm -rf "$cluster_dir"
+      fi
+      if [[ ! -f "${cluster_dir}/cluster_labels.pt" ]]; then
         cluster_args=(
           --candidate-dir "$candidate_dir"
           --feature-type "$feature_type"
@@ -155,7 +163,11 @@ run_candidate_job() {
       if [[ "$SKIP_PBRF" == "1" ]]; then
         agg_args+=(--skip-pbrf)
       fi
-      if [[ ! -d "${CACHE_ROOT}/aggregation/${agg_run_id}" ]]; then
+      if [[ -d "${CACHE_ROOT}/aggregation/${agg_run_id}" && ! -f "${CACHE_ROOT}/aggregation/${agg_run_id}/aggregation_result.csv" ]]; then
+        echo "[job ${job_index}] remove incomplete aggregation_dir=${CACHE_ROOT}/aggregation/${agg_run_id}"
+        rm -rf "${CACHE_ROOT}/aggregation/${agg_run_id}"
+      fi
+      if [[ ! -f "${CACHE_ROOT}/aggregation/${agg_run_id}/aggregation_result.csv" ]]; then
         python experiments/group_influence/run_aggregation.py "${agg_args[@]}"
       else
         echo "[job ${job_index}] reuse aggregation_dir=${CACHE_ROOT}/aggregation/${agg_run_id}"
