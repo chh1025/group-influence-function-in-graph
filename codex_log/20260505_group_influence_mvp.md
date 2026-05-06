@@ -489,3 +489,39 @@ Useful commands:
 tmux attach -t group_inf_mvp_small_20260506_130854
 tail -f results/group_influence_mvp_small/20260506_130854/logs/worker_0.log
 ```
+
+Completion check:
+
+```text
+candidate dirs: 12 / 12
+clustering dirs: 24 / 24
+aggregation dirs: 24 / 24
+done workers: 4 / 4
+tmux session: finished
+errors in worker logs: none observed
+```
+
+Aggregate over 24 aggregation runs:
+
+```text
+method        n   mean_err_H   mean_err_E   mean_err_C_ind   wins(H/E/C_ind)   sign(H/E/C_ind)
+cheap_kmeans 12  0.0454866    0.313787     0.0604775        8/3/1             6/6/7
+random       12  0.0454866    0.313787     0.0796885        8/2/2             6/6/4
+```
+
+By dataset:
+
+```text
+dataset          n   mean_err_H   mean_err_E   mean_err_C_ind   wins(H/E/C_ind)
+cora_public      6   0.000904944  0.000600256  0.000637571      0/3/3
+citeseer_public  6   0.00130138   0.00173252   0.00154241       6/0/0
+cornell          6   0.100392     0.104365     0.11444         4/2/0
+texas            6   0.0793476    1.14845      0.163712        6/0/0
+```
+
+Interpretation:
+
+- `cheap_kmeans` improves average `C_ind` error versus random clustering in this small grid.
+- `C_ind` is not yet competitive with the best of `H` and `E` overall.
+- The promising cases are mostly `cora_public`, where `C_ind` wins 3 of 6 runs.
+- `texas` shows large regressions for cluster aggregation, especially on `top_abs` and `mixed`.
