@@ -651,3 +651,64 @@ Useful commands:
 tmux attach -t group_inf_output_long_20260506_142428
 tail -f results/group_influence_output_long/20260506_142428/logs/worker_0.log
 ```
+
+Completion check:
+
+```text
+candidate dirs: 84 / 84
+clustering dirs: 336 / 336
+aggregation dirs: 336 / 336
+done workers: 4 / 4
+tmux session: finished
+errors in final worker logs: none observed after resume
+```
+
+Machine-readable aggregate:
+
+```text
+results/group_influence_output_long/20260506_142428/aggregation_long_results.csv
+results/group_influence_output_long/20260506_142428/summary_by_feature_clustering.csv
+results/group_influence_output_long/20260506_142428/summary_by_dataset.csv
+```
+
+Overall aggregation result:
+
+```text
+n=336
+mean_err_H=0.076594
+mean_err_E=0.274103
+mean_err_C_ind=0.090721
+median_err_H=0.004046
+median_err_E=0.002338
+median_err_C_ind=0.003927
+wins(H/E/C_ind)=114/154/68
+sign_match(H/E/C_ind)=252/272/236
+```
+
+By feature/clustering:
+
+```text
+feature        clustering      n   mean_err_C_ind  median_err_C_ind  wins(H/E/C_ind)
+cheap          cheap_kmeans    84  0.094739        0.004035          28/38/18
+cheap          random          84  0.092266        0.003367          30/38/16
+logits_delta   cheap_kmeans    84  0.083614        0.004347          26/41/17
+logits_delta   random          84  0.092266        0.003367          30/37/17
+```
+
+Interpretation:
+
+- `logits_delta + cheap_kmeans` has the best mean `C_ind` error, mostly due to improvements on large-error WebKB cases.
+- Median error still favors the random partition baseline, so the output-space clustering is not uniformly better.
+- `C_ind` is still not generally competitive with `H`/`E`: it wins only 68 of 336 runs.
+- `E` has the most wins overall, mostly on low-error citation/heterophily datasets.
+- The most promising regime is `GAT layer 4` with `logits_delta + cheap_kmeans`: mean `C_ind` beats both `H` and `E` in that slice.
+
+Dataset notes:
+
+```text
+cora_public: C_ind is competitive; mean C is best overall.
+texas: logits_delta + cheap_kmeans improves over H/E on average, but other clusterings regress.
+cornell: random clustering has surprisingly strong C_ind cases; logits_delta kmeans is unstable.
+chameleon/pubmed/squirrel: errors are very small; E is usually strongest.
+citeseer_public: H/E dominate; C_ind rarely wins.
+```
