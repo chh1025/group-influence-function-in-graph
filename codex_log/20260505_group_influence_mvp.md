@@ -428,3 +428,64 @@ abs_error_C_ind=0.00010492539
 Implementation note:
 
 `run_baselines.py` and `run_aggregation.py` now infer `num_group_elem` from `candidate_edges.pt` when a saved candidate set is loaded. This keeps PBRF checkpoint/result directories under the correct `Nedges` path.
+
+## MVP Small Grid Tmux Run
+
+Launched on 2026-05-06 13:08 KST.
+
+Launcher:
+
+```text
+run_group_influence_mvp_small.sh
+```
+
+Tmux session:
+
+```text
+group_inf_mvp_small_20260506_130854
+```
+
+Run root:
+
+```text
+results/group_influence_mvp_small/20260506_130854
+```
+
+Grid:
+
+```text
+datasets: cora_public,citeseer_public,texas,cornell
+model: GCN
+layers: 2
+candidate_types: random,top_abs,mixed
+num_candidates: 100
+top_abs/mixed pool_size: 200
+cluster_methods: cheap_kmeans,random
+num_clusters: 5
+pbrf_epochs: 1
+gpus: 0,1,2,3
+```
+
+Planned work:
+
+```text
+candidate jobs: 12
+aggregation runs: 24
+```
+
+Initial health check:
+
+```text
+candidate dirs: 8 / 12
+clustering dirs: 12 / 24
+aggregation dirs: 11 / 24
+tmux workers alive: 4 / 4
+errors in worker logs: none observed
+```
+
+Useful commands:
+
+```bash
+tmux attach -t group_inf_mvp_small_20260506_130854
+tail -f results/group_influence_mvp_small/20260506_130854/logs/worker_0.log
+```
